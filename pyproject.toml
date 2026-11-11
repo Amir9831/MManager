@@ -8,3 +8,7 @@ requires-python = ">=3.10"
 dependencies = ["fastapi>=0.110,<1", "uvicorn[standard]>=0.27,<1"]
 [project.scripts]
 Mmanager = "mmanager.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["mmanager*"]
+exclude = ["tests*"]
