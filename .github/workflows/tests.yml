@@ -4,7 +4,7 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04]
+        os: [ubuntu-22.04, ubuntu-24.04, ubuntu-26.04]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -14,4 +14,5 @@ jobs:
       - run: pip install -r requirements.txt pytest
       - run: pip install -e .
       - run: python -m compileall -q mmanager
+      - run: bash -n scripts/install.sh
       - run: pytest -q
