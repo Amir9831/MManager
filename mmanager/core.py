@@ -55,7 +55,8 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
     used_udp={r[0] for r in db.execute("SELECT bedrock_port FROM servers WHERE bedrock_port IS NOT NULL")}
     item["bedrock_port"]=choose_port(19132,"udp",used_udp)
    db.execute("INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory,eula_accepted) VALUES(:id,:name,:edition,:software,:version,:java_port,:bedrock_port,:directory,:eula_accepted)",item);db.commit()
-  artifact=_vanilla(version) if software=="vanilla" else _paper(version)\n  _download(artifact["url"],d/"server.jar",artifact.get("checksum"),artifact.get("algorithm","sha256"))
+  artifact=_vanilla(version) if software=="vanilla" else _paper(version)
+  _download(artifact["url"],d/"server.jar",artifact.get("checksum"),artifact.get("algorithm","sha256"))
   (d/"eula.txt").write_text("eula=true\n")
   (d/"server.properties").write_text(f"server-port={item['java_port']}\n")
   if edition=="crossplay":
