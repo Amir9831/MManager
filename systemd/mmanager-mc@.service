@@ -1,0 +1,22 @@
+[Unit]
+Description=MManager Minecraft server %i
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+User=mmanager
+Group=mmanager
+WorkingDirectory=/var/lib/mmanager/servers/%i
+ExecStart=/usr/bin/java -Xms256M -Xmx1G -jar server.jar nogui
+Restart=on-failure
+RestartSec=10
+KillSignal=SIGINT
+TimeoutStopSec=90
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/mmanager/servers/%i
+LimitNOFILE=100000
+[Install]
+WantedBy=multi-user.target

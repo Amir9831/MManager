@@ -1,26 +1,23 @@
 # MManager
 
-Modular Minecraft server manager for Ubuntu 22.04+.
+Minecraft server manager for Ubuntu 22.04 / 24.04 / 26.04.
 
-## Development status
-This repository contains an early development foundation: interactive recovery CLI, Core API, SQLite registry, TCP/UDP port probe, responsive purple dashboard, preflight installer and CI. It is **not yet a production Minecraft hosting panel**. Game runtime adapters, panel authentication, live console, backup/restore, transactional port reservations and signed self-update/rollback are not complete. The installer intentionally makes no system changes.
+## One-command install
 
-## Development
 ```bash
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
-Mmanager
+curl -fsSL https://raw.githubusercontent.com/Amir9831/MManager/main/install.sh | sudo bash
 ```
 
-## Local panel preview
-Run Core API on 127.0.0.1:8765 and static panel on 127.0.0.1:8766 (see systemd unit examples). To access remotely, use SSH tunnels for both ports; do not expose either service publicly.
+Admin credentials: `/root/mmanager-admin-credentials.txt` (0600). Panel: `http://127.0.0.1:8766`. Remote access only via SSH tunnel:
 
-## Host layout target
-- `/opt/mmanager` — application code
-- `/etc/mmanager` — configuration and secrets
-- `/var/lib/mmanager` — database, worlds and backups
-- `/var/log/mmanager` — logs
+```bash
+ssh -L 8766:127.0.0.1:8766 -L 8765:127.0.0.1:8765 USER@SERVER
+```
 
-See `docs/` and `SECURITY.md`.
+## Implemented
+
+Interactive `Mmanager` CLI; Argon2id login and bearer auth; Java Vanilla and Paper downloads; Paper-based Geyser/Floodgate crossplay; SQLite registry with TCP/UDP port uniqueness; systemd server lifecycle running unprivileged; logs; compressed, server-pausing backups and guarded restore; responsive purple web dashboard.
+
+## Not yet implemented
+
+Bedrock Dedicated Server, RCON commands/live interactive console, player moderation, CPU/RAM telemetry, plugin manager, signed self-updater/rollback and automated firewall configuration. The panel/API bind to loopback only. This is an early functional release, not a claim of zero defects. See SECURITY.md and docs/INSTALL.md.

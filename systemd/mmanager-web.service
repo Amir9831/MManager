@@ -1,18 +1,17 @@
 [Unit]
-Description=MManager Web Panel (local preview)
+Description=MManager Web Panel
 After=network.target
-
 [Service]
 Type=simple
 User=mmanager
 Group=mmanager
-WorkingDirectory=/opt/mmanager
-ExecStart=/usr/bin/python3 -m http.server 8766 --bind 127.0.0.1 --directory /opt/mmanager/mmanager/web
+WorkingDirectory=/opt/mmanager/current
+ExecStart=/usr/bin/python3 -m http.server 8766 --bind 127.0.0.1 --directory /opt/mmanager/current/mmanager/web
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-
+ProtectHome=true
 [Install]
 WantedBy=multi-user.target
