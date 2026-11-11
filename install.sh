@@ -18,8 +18,7 @@ else
  install -d -m 0755 /etc/apt/keyrings
  wget -qO- https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg
  echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $VERSION_CODENAME main" >/etc/apt/sources.list.d/adoptium.list
- apt-get update -y
- apt-get install -y temurin-21-jre
+ apt-get update -y; apt-get install -y temurin-21-jre
 fi
 id mmanager >/dev/null 2>&1 || useradd --system --home-dir /var/lib/mmanager --create-home --shell /usr/sbin/nologin mmanager
 install -d -o root -g mmanager -m 0750 /etc/mmanager
@@ -32,7 +31,7 @@ mkdir "$TMP/src"; tar -xzf "$TMP/source.tar.gz" --strip-components=1 -C "$TMP/sr
 [[ -f "$TMP/src/pyproject.toml" && -f "$TMP/src/mmanager/api.py" && -f "$TMP/src/systemd/mmanager-core.service" ]] || fail "Archive integrity sanity check failed"
 RELEASE="/opt/mmanager/releases/$(date -u +%Y%m%d%H%M%S)"
 mv "$TMP/src" "$RELEASE"
-say "Creating isolated Python environment"
+say "Building isolated Python environment"
 python3 -m venv "$RELEASE/venv"
 "$RELEASE/venv/bin/pip" install --upgrade pip
 "$RELEASE/venv/bin/pip" install "$RELEASE"
@@ -47,27 +46,25 @@ PY
  printf '%s' "$API_TOKEN" >/etc/mmanager/api.token
  chown root:mmanager /etc/mmanager/auth.json /etc/mmanager/api.token; chmod 0640 /etc/mmanager/auth.json /etc/mmanager/api.token
  { echo "MManager administrator"; echo "Username: admin"; echo "Password: $ADMIN_PASS"; echo "Panel: http://127.0.0.1:8766"; echo "SSH: ssh -L 8766:127.0.0.1:8766 -L 8765:127.0.0.1:8765 USER@SERVER"; } >/root/mmanager-admin-credentials.txt
- chmod 0600 /root/mmanager-admin-credentials.txt
- say "New admin password saved to /root/mmanager-admin-credentials.txt"
+ chmod 0600 /root/mmanager-admin-credentials.txt; say "Admin password saved to /root/mmanager-admin-credentials.txt"
 else say "Existing administrator credentials preserved"; fi
 OLD=""; [[ -L /opt/mmanager/current ]] && OLD=$(readlink -f /opt/mmanager/current)
 ln -sfn "$RELEASE" /opt/mmanager/current.next; mv -Tf /opt/mmanager/current.next /opt/mmanager/current
 ln -sfn /opt/mmanager/current/venv/bin/Mmanager /usr/local/bin/Mmanager
 cat >/etc/sudoers.d/mmanager <<'SUDO'
-mmanager ALL=(root) NOPASSWD: /usr/bin/systemctl start mmanager-mc@*.service, /usr/bin/systemctl stop mmanager-mc@*.service, /usr/bin/systemctl restart mmanager-mc@*.service, /usr/bin/journalctl -u mmanager-mc@*.service -n * --no-pager -o cat
+mmanager ALL=(root) NOPASSWD: /usr/bin/systemctl start mmanager-mc@*.service, /usr/bin/systemctl stop mmanager-mc@*.service, /usr/bin/systemctl restart mmanager-mc@*.service, /usr/bin/systemctl is-active --quiet mmanager-mc@*.service, /usr/bin/journalctl -u mmanager-mc@*.service -n * --no-pager -o cat
 SUDO
 chmod 0440 /etc/sudoers.d/mmanager; visudo -cf /etc/sudoers.d/mmanager >/dev/null
 for unit in mmanager-core.service mmanager-web.service mmanager-mc@.service; do install -o root -g root -m 0644 "/opt/mmanager/current/systemd/$unit" "/etc/systemd/system/$unit"; done
+chown -R mmanager:mmanager /var/lib/mmanager /var/log/mmanager
 systemctl daemon-reload; systemctl enable mmanager-core.service mmanager-web.service
 systemctl restart mmanager-core.service mmanager-web.service; sleep 2
 if ! curl --fail --silent http://127.0.0.1:8765/api/health >/dev/null; then
- say "Health check failed; rollback attempted"
+ say "Core health check failed; rollback attempted"
  if [[ -n "$OLD" && -d "$OLD" ]]; then ln -sfn "$OLD" /opt/mmanager/current.rollback; mv -Tf /opt/mmanager/current.rollback /opt/mmanager/current; systemctl restart mmanager-core.service mmanager-web.service; fi
  fail "Core health check failed. Inspect journalctl -u mmanager-core"
 fi
-chown -R mmanager:mmanager /var/lib/mmanager /var/log/mmanager
 say "Installation completed"
-echo "Panel: http://127.0.0.1:8766"
-echo "Credentials: /root/mmanager-admin-credentials.txt"
+echo "Panel: http://127.0.0.1:8766"; echo "Credentials: /root/mmanager-admin-credentials.txt"
 echo "Remote access: ssh -L 8766:127.0.0.1:8766 -L 8765:127.0.0.1:8765 USER@SERVER"
-echo "Panel and API are loopback-only; do not expose ports 8765/8766 publicly."
+echo "Panel/API bind to loopback only. Do not expose 8765/8766 publicly."
