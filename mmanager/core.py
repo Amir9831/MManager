@@ -7,18 +7,19 @@ class ManagerError(Exception):pass
 def _json(url):
  req=urllib.request.Request(url,headers={"User-Agent":"MManager/0.2"})
  with urllib.request.urlopen(req,timeout=25) as r:return json.load(r)
-def _download(url,dest):
- tmp=Path(str(dest)+".part");total=0
+def _download(url,dest,expected=None,algorithm="sha256"):
+ tmp=Path(str(dest)+".part");total=0;digest=__import__("hashlib").new(algorithm)
  try:
-  req=urllib.request.Request(url,headers={"User-Agent":"MManager/0.2"})
+  req=urllib.request.Request(url,headers={"User-Agent":"MManager/0.2 (https://github.com/Amir9831/MManager)"})
   with urllib.request.urlopen(req,timeout=60) as r,tmp.open("wb") as out:
    while True:
     chunk=r.read(1024*1024)
     if not chunk:break
     total+=len(chunk)
     if total>1024**3:raise ManagerError("GM-210: Download exceeds 1 GiB")
-    out.write(chunk)
+    digest.update(chunk);out.write(chunk)
   if total<1024:raise ManagerError("GM-211: Download unexpectedly small")
+  if expected and digest.hexdigest().lower()!=expected.lower():raise ManagerError("GM-215: Download checksum mismatch; refusing to install")
   tmp.replace(dest)
  finally:
   if tmp.exists():tmp.unlink()
@@ -26,14 +27,17 @@ def _vanilla(version):
  m=_json("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
  v=next((x for x in m["versions"] if x["id"]==version and x["type"] in ("release","snapshot")),None)
  if not v:raise ManagerError("GM-212: Minecraft version not found")
- url=_json(v["url"]).get("downloads",{}).get("server",{}).get("url")
- if not url:raise ManagerError("GM-213: No server jar for this version")
- return url
+ server=_json(v["url"]).get("downloads",{}).get("server")
+ if not server or not server.get("url"):raise ManagerError("GM-213: No server jar for this version")
+ return {"url":server["url"],"checksum":server.get("sha1"),"algorithm":"sha1"}
 def _paper(version):
- base="https://api.papermc.io/v2/projects/paper";builds=_json(f"{base}/versions/{version}").get("builds",[])
- if not builds:raise ManagerError("GM-214: No Paper builds for this version")
- b=builds[-1];d=_json(f"{base}/versions/{version}/builds/{b}")
- return f"{base}/versions/{version}/builds/{b}/downloads/{d['downloads']['application']['name']}"
+ url=f"https://fill.papermc.io/v3/projects/paper/versions/{version}/builds?channel=STABLE"
+ req=urllib.request.Request(url,headers={"User-Agent":"MManager/0.2 (https://github.com/Amir9831/MManager)"})
+ with urllib.request.urlopen(req,timeout=25) as r: builds=json.load(r)
+ if not isinstance(builds,list) or not builds:raise ManagerError("GM-214: No stable Paper builds for this version")
+ download=builds[0].get("downloads",{}).get("server:default",{})
+ if not download.get("url"):raise ManagerError("GM-214: Paper stable build has no server download")
+ return {"url":download["url"],"checksum":download.get("checksums",{}).get("sha256"),"algorithm":"sha256"}
 def create_server(name,edition="java",version="1.21.4",software="vanilla",accept_eula=False):
  if not NAME.fullmatch(name):raise ManagerError("GM-101: Invalid server name")
  if edition not in {"java","crossplay"}:raise ManagerError("GM-102: Bedrock-only is not supported in this release")
@@ -51,7 +55,7 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
     used_udp={r[0] for r in db.execute("SELECT bedrock_port FROM servers WHERE bedrock_port IS NOT NULL")}
     item["bedrock_port"]=choose_port(19132,"udp",used_udp)
    db.execute("INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory,eula_accepted) VALUES(:id,:name,:edition,:software,:version,:java_port,:bedrock_port,:directory,:eula_accepted)",item);db.commit()
-  _download(_vanilla(version) if software=="vanilla" else _paper(version),d/"server.jar")
+  artifact=_vanilla(version) if software=="vanilla" else _paper(version)\n  _download(artifact["url"],d/"server.jar",artifact.get("checksum"),artifact.get("algorithm","sha256"))
   (d/"eula.txt").write_text("eula=true\n")
   (d/"server.properties").write_text(f"server-port={item['java_port']}\n")
   if edition=="crossplay":
