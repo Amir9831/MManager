@@ -31,11 +31,13 @@ def _vanilla(version):
  if not server or not server.get("url"):raise ManagerError("GM-213: No server jar for this version")
  return {"url":server["url"],"checksum":server.get("sha1"),"algorithm":"sha1"}
 def _paper(version):
- url=f"https://fill.papermc.io/v3/projects/paper/versions/{version}/builds?channel=STABLE"
+ url=f"https://fill.papermc.io/v3/projects/paper/versions/{version}/builds"
  req=urllib.request.Request(url,headers={"User-Agent":"MManager/0.2 (https://github.com/Amir9831/MManager)"})
  with urllib.request.urlopen(req,timeout=25) as r: builds=json.load(r)
- if not isinstance(builds,list) or not builds:raise ManagerError("GM-214: No stable Paper builds for this version")
- download=builds[0].get("downloads",{}).get("server:default",{})
+ if not isinstance(builds,list):raise ManagerError("GM-214: Invalid Paper build metadata")
+ stable=next((b for b in builds if b.get("channel")=="STABLE"),None)
+ if not stable:raise ManagerError("GM-214: No stable Paper builds for this version")
+ download=stable.get("downloads",{}).get("server:default",{})
  if not download.get("url"):raise ManagerError("GM-214: Paper stable build has no server download")
  return {"url":download["url"],"checksum":download.get("checksums",{}).get("sha256"),"algorithm":"sha256"}
 def create_server(name,edition="java",version="1.21.4",software="vanilla",accept_eula=False):
