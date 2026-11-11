@@ -1,0 +1,20 @@
+[Unit]
+Description=MManager Core API
+After=network.target
+
+[Service]
+Type=simple
+User=mmanager
+Group=mmanager
+WorkingDirectory=/opt/mmanager
+Environment=MMANAGER_DATA=/var/lib/mmanager
+ExecStart=/opt/mmanager/venv/bin/uvicorn mmanager.api:app --host 127.0.0.1 --port 8765
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/mmanager /var/log/mmanager
+
+[Install]
+WantedBy=multi-user.target
