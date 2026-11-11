@@ -76,9 +76,12 @@ def _systemctl(action,item):
  p=subprocess.run(cmd,capture_output=True,text=True,timeout=30)
  if p.returncode:raise ManagerError("GM-220: "+(p.stderr.strip() or p.stdout.strip())[:300])
 def _active(item):
- cmd=["/usr/bin/systemctl","is-active","--quiet",f"mmanager-mc@{item['name']}.service"]
+ cmd=["/usr/bin/systemctl","is-active",f"mmanager-mc@{item['name']}.service"]
  if os.geteuid()!=0:cmd=["/usr/bin/sudo","-n",*cmd]
- return subprocess.run(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=15).returncode==0
+ p=subprocess.run(cmd,capture_output=True,text=True,timeout=15)
+ if p.returncode==0:return True
+ if p.returncode==3 and p.stdout.strip()=="inactive":return False
+ raise ManagerError("GM-222: Cannot safely determine server state: "+(p.stderr.strip() or p.stdout.strip())[:250])
 def server_action(sid,action):
  item=store.get_server(sid)
  if not item:raise ManagerError("GM-108: Server not found")
@@ -118,13 +121,22 @@ def restore_backup(sid,bid,confirm=False):
  b=next((x for x in store.list_backups(sid) if x["id"]==bid),None)
  if not b:raise ManagerError("GM-231: Backup not found")
  _systemctl("stop",item);create_backup(sid)
- root=Path(item["directory"]).resolve();stage=root.parent/(root.name+".restore-"+secrets.token_hex(4));stage.mkdir()
+ root=Path(item["directory"]).resolve();stage=root.parent/(root.name+".restore-"+secrets.token_hex(4));old=root.parent/(root.name+".old-"+secrets.token_hex(4));stage.mkdir()
  try:
   with tarfile.open(b["filename"],"r:gz") as tar:
    members=tar.getmembers()
+   required=sum(m.size for m in members if m.isfile())
+   if required>shutil.disk_usage(stage.parent).free*0.8:raise ManagerError("GM-233: Not enough free disk space for restore")
    for m in members:
     if not (stage/m.name).resolve().is_relative_to(stage.resolve()) or not (m.isfile() or m.isdir()):raise ManagerError("GM-232: Unsafe archive member rejected")
    for m in members:tar.extract(m,stage,set_attrs=False)
-  old=root.parent/(root.name+".old-"+secrets.token_hex(4));root.rename(old);stage.rename(root);shutil.rmtree(old,ignore_errors=True)
- except Exception:shutil.rmtree(stage,ignore_errors=True);raise
+  root.rename(old)
+  try:stage.rename(root)
+  except Exception:
+   old.rename(root);raise
+  shutil.rmtree(old,ignore_errors=True)
+ except Exception:
+  shutil.rmtree(stage,ignore_errors=True)
+  if old.exists() and not root.exists():old.rename(root)
+  raise
  return {"restored":True}
