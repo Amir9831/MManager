@@ -1,23 +1,46 @@
-from fastapi import FastAPI,HTTPException
+from fastapi import FastAPI,HTTPException,Depends,Header,Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel,Field
-from . import store,core
-app=FastAPI(title='MManager API',version='0.1.0')
-# The API is loopback-only. CORS is limited to the local forwarded panel origins.
-app.add_middleware(CORSMiddleware,allow_origins=['http://127.0.0.1:8766','http://localhost:8766'],allow_credentials=False,allow_methods=['GET','POST','DELETE'],allow_headers=['Content-Type'])
+from . import store,core,auth
+app=FastAPI(title="MManager API",version="0.2.0")
+app.add_middleware(CORSMiddleware,allow_origins=["http://127.0.0.1:8766","http://localhost:8766"],allow_credentials=False,allow_methods=["GET","POST"],allow_headers=["Content-Type","Authorization"])
+class Login(BaseModel): password:str=Field(min_length=1,max_length=256)
 class CreateServer(BaseModel):
- name:str=Field(min_length=2,max_length=32)
- edition:str
- version:str=Field(min_length=1,max_length=40)
-@app.get('/api/health')
-def health(): return {'status':'ok','version':'0.1.0'}
-@app.get('/api/servers')
-def servers(): return {'items':store.list_servers()}
-@app.post('/api/servers')
-def create(p:CreateServer):
- try: return core.create_server(p.name,p.edition,p.version)
+ name:str=Field(min_length=2,max_length=32); edition:str="java"; software:str="vanilla"; version:str=Field(min_length=1,max_length=40); accept_eula:bool=False
+def secured(authorization:str|None=Header(default=None)):
+ token=authorization[7:] if authorization and authorization.startswith("Bearer ") else ""
+ if not auth.verify_token(token): raise HTTPException(401,detail="Authentication required")
+ return True
+@app.get("/api/health")
+def health(): return {"status":"ok","version":"0.2.0"}
+@app.post("/api/login")
+def login(p:Login,request:Request):
+ token=auth.verify_login(p.password,request.client.host if request.client else "unknown")
+ if not token: raise HTTPException(401,detail="Invalid credentials or rate limit reached")
+ return {"token":token}
+@app.get("/api/servers")
+def servers(_:bool=Depends(secured)): return {"items":store.list_servers()}
+@app.post("/api/servers")
+def create(p:CreateServer,_:bool=Depends(secured)):
+ try: return core.create_server(p.name,p.edition,p.version,p.software,p.accept_eula)
  except (core.ManagerError,OSError,ValueError) as e: raise HTTPException(400,detail=str(e))
-@app.delete('/api/servers/{sid}')
-def delete(sid:str,confirm:bool=False):
- try: return core.delete_server(sid,confirm)
+@app.post("/api/servers/{sid}/{action}")
+def action(sid:str,action:str,_:bool=Depends(secured)):
+ try: return core.server_action(sid,action)
  except core.ManagerError as e: raise HTTPException(400,detail=str(e))
+@app.get("/api/servers/{sid}/logs")
+def logs(sid:str,lines:int=100,_:bool=Depends(secured)):
+ try: return {"logs":core.server_logs(sid,lines)}
+ except core.ManagerError as e: raise HTTPException(400,detail=str(e))
+@app.post("/api/servers/{sid}/backups")
+def backup(sid:str,_:bool=Depends(secured)):
+ try: return core.create_backup(sid)
+ except (core.ManagerError,OSError) as e: raise HTTPException(400,detail=str(e))
+@app.get("/api/servers/{sid}/backups")
+def backups(sid:str,_:bool=Depends(secured)):
+ try: return {"items":core.list_backups(sid)}
+ except core.ManagerError as e: raise HTTPException(400,detail=str(e))
+@app.post("/api/servers/{sid}/backups/{bid}/restore")
+def restore(sid:str,bid:str,confirm:bool=False,_:bool=Depends(secured)):
+ try: return core.restore_backup(sid,bid,confirm)
+ except (core.ManagerError,OSError,ValueError) as e: raise HTTPException(400,detail=str(e))

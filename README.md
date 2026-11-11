@@ -1,26 +1,30 @@
 # MManager
 
-Modular Minecraft server manager for Ubuntu 22.04+.
+Minecraft server manager for Ubuntu 22.04 / 24.04 / 26.04.
 
-## Development status
-This repository contains an early development foundation: interactive recovery CLI, Core API, SQLite registry, TCP/UDP port probe, responsive purple dashboard, preflight installer and CI. It is **not yet a production Minecraft hosting panel**. Game runtime adapters, panel authentication, live console, backup/restore, transactional port reservations and signed self-update/rollback are not complete. The installer intentionally makes no system changes.
+## One-command installation
 
-## Development
 ```bash
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
-Mmanager
+curl -fsSL https://raw.githubusercontent.com/Amir9831/MManager/main/install.sh | sudo bash
 ```
 
-## Local panel preview
-Run Core API on 127.0.0.1:8765 and static panel on 127.0.0.1:8766 (see systemd unit examples). To access remotely, use SSH tunnels for both ports; do not expose either service publicly.
+Admin credentials are generated once at `/root/mmanager-admin-credentials.txt` (0600). Panel: `http://127.0.0.1:8766`. Remote access must use SSH forwarding:
 
-## Host layout target
-- `/opt/mmanager` — application code
-- `/etc/mmanager` — configuration and secrets
-- `/var/lib/mmanager` — database, worlds and backups
-- `/var/log/mmanager` — logs
+```bash
+ssh -L 8766:127.0.0.1:8766 -L 8765:127.0.0.1:8765 USER@SERVER
+```
 
-See `docs/` and `SECURITY.md`.
+## Implemented in 0.2
+
+- Interactive `Mmanager` recovery CLI.
+- FastAPI Core API with Argon2id password hash and bearer-token authentication.
+- Java Vanilla and Paper server download/provisioning.
+- Paper crossplay via Geyser and Floodgate plugin download.
+- SQLite registry with unique TCP port index.
+- Per-server systemd template running as unprivileged `mmanager`.
+- Start/stop/restart, journal logs, compressed backups and guarded restore.
+- Responsive purple web dashboard.
+
+## Not implemented yet
+
+Bedrock Dedicated Server, RCON console/commands, player moderation, CPU/RAM telemetry, plugin manager, signed update/automatic rollback and full firewall automation. This is a functional development release, not a guarantee of zero defects. The web/API bind to loopback only. Review SECURITY.md before production use.
