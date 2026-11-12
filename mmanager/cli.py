@@ -22,16 +22,21 @@ def web_menu():
   c=input("> ").strip()
   if c=="0": return
   if c=="1":
-   value=input("New path (blank = generate random): ").strip().strip("/")
-   if not value:
-    import secrets
-    value=secrets.token_urlsafe(24)
-   if len(value)<24 or not value.replace("-","").replace("_","").isalnum():
-    print("Path must be at least 24 URL-safe characters."); continue
-   cfg["path"]=value
-   save(cfg)
-   if ctl("restart","mmanager-web.service"): print("Path updated.")
-   else: print("Saved, but web service restart failed; run: sudo systemctl restart mmanager-web")
+   rows=store.list_servers()
+   if not rows:
+    print("No server configured. Use the web panel's one-time setup.")
+   else:
+    item=rows[0]
+    try:
+     status=core.server_status(item["id"])["status"]
+     print("Server:",item["name"],"|",item["edition"],"|",item["software"],"|",item["version"],"|",status)
+     a=input("Action start/stop/restart/logs/backups/settings: ").strip().lower()
+     if a=="logs": print(core.server_logs(item["id"],200))
+     elif a in {"start","stop","restart"}: core.server_action(item["id"],a); print("Done.")
+     elif a=="backups": print(core.list_backups(item["id"]))
+     elif a=="settings": print(core.server_settings(item["id"]))
+     else: print("Invalid action")
+    except Exception as e: print("[ERROR]",e)
   elif c=="2":
    p=getpass("New administrator password (min 12 chars): ")
    if len(p)<12: print("Password must be at least 12 characters."); continue
