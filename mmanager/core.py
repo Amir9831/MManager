@@ -580,6 +580,68 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
         raise
 
 
+
+def delete_server(sid, confirm=False):
+    """Permanently remove a stopped server and its registered backup files."""
+    if confirm is not True:
+        raise ManagerError("GM-250: Explicit deletion confirmation required")
+    item = store.get_server(sid)
+    if not item:
+        raise ManagerError("GM-108: Server not found")
+
+    name = item["name"]
+    if not NAME.fullmatch(name):
+        raise ManagerError("GM-251: Refusing to delete a server with an invalid registry name")
+
+    servers_root = settings.SERVERS.resolve()
+    root = Path(item["directory"]).resolve()
+    expected = (servers_root / name).resolve()
+    if root != expected or root.parent != servers_root or root == servers_root:
+        raise ManagerError("GM-252: Refusing to delete a server directory outside the managed server root")
+    if not root.is_dir() or root.is_symlink():
+        raise ManagerError("GM-253: Server directory is missing or is not a safe directory")
+
+    backups_root = settings.BACKUPS.resolve()
+    backup_paths = []
+    for backup in store.list_backups(sid):
+        path = Path(backup["filename"]).resolve()
+        if path.parent != backups_root or not path.is_file() or path.is_symlink():
+            raise ManagerError("GM-254: Refusing deletion because a registered backup is missing or outside the managed backup directory")
+        backup_paths.append(path)
+
+    if _active(item):
+        _systemctl("stop", item)
+        if _active(item):
+            raise ManagerError("GM-255: Server is still active; deletion aborted")
+
+    quarantine = root.parent / (root.name + ".deleting-" + secrets.token_hex(6))
+    root.rename(quarantine)
+    cleanup_warnings = []
+    try:
+        with store.connect() as db:
+            cur = db.execute("DELETE FROM servers WHERE id=?", (sid,))
+            if cur.rowcount != 1:
+                raise ManagerError("GM-108: Server registry entry disappeared during deletion")
+        for path in backup_paths:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as exc:
+                cleanup_warnings.append(f"Could not remove backup {path.name}: {exc}")
+        log_path = SERVER_LOG_DIR / (name + ".log")
+        try:
+            log_path.unlink(missing_ok=True)
+        except OSError as exc:
+            cleanup_warnings.append(f"Could not remove server log: {exc}")
+        try:
+            shutil.rmtree(quarantine)
+        except OSError as exc:
+            cleanup_warnings.append(f"Could not remove quarantined server directory {quarantine}: {exc}")
+    except Exception:
+        if quarantine.exists() and not root.exists():
+            quarantine.rename(root)
+        raise
+    return {"deleted": True, "id": sid, "cleanup_warnings": cleanup_warnings}
+
 def server_status(sid):
     item = store.get_server(sid)
     if not item:
