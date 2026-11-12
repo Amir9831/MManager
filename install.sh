@@ -30,7 +30,7 @@ done
 if apt-cache show openjdk-21-jre-headless >/dev/null 2>&1; then
  apt-get install -y ca-certificates curl tar python3 python3-venv python3-pip openjdk-21-jre-headless sudo policykit-1 util-linux logrotate git "${BDS_RUNTIME_PKGS[@]}"
 else
- apt-get install -y ca-certificates curl tar wget gpg python3 python3-venv python3-pip sudo policykit-1 util-linux logrotate "${BDS_RUNTIME_PKGS[@]}"
+ apt-get install -y ca-certificates curl tar wget gpg python3 python3-venv python3-pip sudo policykit-1 util-linux logrotate git "${BDS_RUNTIME_PKGS[@]}"
  install -d -m 0755 /etc/apt/keyrings
  wget -qO- https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor --yes -o /etc/apt/keyrings/adoptium.gpg
  echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $VERSION_CODENAME main" >/etc/apt/sources.list.d/adoptium.list
