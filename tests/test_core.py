@@ -21,3 +21,23 @@ def test_crossplay_allocates_udp_and_config(monkeypatch,tmp_path):
  setup(monkeypatch,tmp_path);x=core.create_server("cross","crossplay","1.21.4","paper",True)
  assert x["bedrock_port"]==19132
  assert "port: 19132" in (tmp_path/"servers"/"cross"/"plugins"/"Geyser-Spigot"/"config.yml").read_text()
+
+def test_bedrock_release_catalog(monkeypatch):
+    from mmanager import core
+    monkeypatch.setattr(core, "_json", lambda url: {"release":{"latest":"1.26.63","versions":["1.26.63","1.26.62"]}})
+    data=core.available_versions("bedrock")
+    assert data["latest"]=="1.26.63"
+    assert [x["id"] for x in data["versions"]]==["1.26.63","1.26.62"]
+
+def test_server_settings_templates_and_validation(monkeypatch,tmp_path):
+    setup(monkeypatch,tmp_path)
+    item=core.create_server("settings","java","1.21.4","vanilla",True)
+    values=core.server_settings(item["id"])["settings"]
+    assert values["max-players"]=="20"
+    assert values["online-mode"]=="true"
+    core.update_server_settings(item["id"],{"motd":"Hello: MManager","max-players":"32"})
+    saved=core.server_settings(item["id"])["settings"]
+    assert saved["motd"]=="Hello: MManager"
+    assert saved["max-players"]=="32"
+    with pytest.raises(core.ManagerError,match="GM-240"):
+        core.update_server_settings(item["id"],{"bad key":"x"})
