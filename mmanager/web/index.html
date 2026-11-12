@@ -126,7 +126,7 @@ function renderPlayerGroup(id,items,kind){
   const add=(title,action,cls="secondary")=>{const btn=document.createElement("button");btn.className=cls;btn.textContent=title;btn.onclick=()=>playerAction(action,p.name);actions.append(btn)};
   if(kind==="online")add("Kick","kick","quiet");
   if(server.edition==="bedrock"){
-   add(kind==="admins"?"حذف ادمینی":"ادمین‌کردن",kind==="admins"?"deop":"permission");
+   add(kind==="admins"?"حذف ادمینی":"ادمین‌کردن",kind==="admins"?"deop":(server.edition==="bedrock"?"permission":"op"));
    if(originalSettings["allow-list"]==="true"){add("حذف از Allowlist","allowlist_remove","danger");add("افزودن به Allowlist","allowlist_add","secondary")}
   }else{
    add(kind==="admins"?"حذف ادمینی":"ادمین‌کردن",kind==="admins"?"deop":"op");
