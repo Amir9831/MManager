@@ -40,13 +40,15 @@ def web_menu():
    data=json.loads(AUTH_FILE.read_text())
    data["password_hash"]=PasswordHasher().hash(p)
    tmp=AUTH_FILE.with_suffix(".tmp"); tmp.write_text(json.dumps(data)); tmp.chmod(0o640); tmp.replace(AUTH_FILE)
-   print("Administrator password changed. Existing browser sessions remain valid until token rotation.")
+   TOKEN_FILE.write_text(__import__("secrets").token_urlsafe(48)); TOKEN_FILE.chmod(0o640)
+   print("Administrator password changed; all existing browser sessions have been invalidated.")
   elif c=="3":
    raw=input("New TCP port (1024-65535): ").strip()
    try: port=int(raw)
    except ValueError: print("Invalid port."); continue
    if not 1024<=port<=65535: print("Port must be between 1024 and 65535."); continue
    cfg["port"]=port; save(cfg)
+   env=CONFIG / "web.env"; env.write_text(f"UVICORN_PORT={port}\\n"); env.chmod(0o640)
    if ctl("restart","mmanager-web.service"): print("Port updated.")
    else: print("Saved, but web service restart failed; check whether the port is already in use.")
   elif c=="4":
