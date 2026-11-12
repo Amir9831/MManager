@@ -26,3 +26,8 @@ def add_backup(x):
  with connect() as db:db.execute("INSERT INTO backups(id,server_id,filename,size) VALUES(:id,:server_id,:filename,:size)",x)
 def list_backups(sid):
  with connect() as db:return [dict(r) for r in db.execute("SELECT * FROM backups WHERE server_id=? ORDER BY created_at DESC",(sid,))]
+
+def update_server_version(sid,version):
+ with connect() as db:
+  cur=db.execute("UPDATE servers SET version=? WHERE id=?",(version,sid))
+  if cur.rowcount!=1: raise ValueError("Server not found")
