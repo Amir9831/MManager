@@ -13,7 +13,7 @@ def ctl(a,u):
 def web_menu():
  while True:
   cfg=ensure()
-  print("\\nWeb panel management")
+  print("\nWeb panel management")
   print(f"1 Change panel path (current: /{cfg['path']}/)")
   print(f"2 Change administrator password")
   print(f"3 Change panel port (current: {cfg['port']})")
@@ -58,7 +58,7 @@ def web_menu():
 
 def main():
  while True:
-  print("\\nMManager\\n1 Servers\\n2 Restart Core\\n3 Restart Web\\n4 Start services\\n5 Stop services\\n6 Diagnostics\\n7 Web panel management\\n0 Exit")
+  print("\nMManager\n1 Servers\n2 Restart Core\n3 Restart Web\n4 Start services\n5 Stop services\n6 Diagnostics\n7 Web panel management\n0 Exit")
   c=input("> ").strip()
   if c=="0": return
   if c=="1":
