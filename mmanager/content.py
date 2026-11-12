@@ -180,6 +180,9 @@ def install_bedrock_resource_pack(sid, fileobj, original_filename, required=Fals
     if core._active(item):
         raise core.ManagerError("Stop the server before installing a resource pack.")
     root = Path(item["directory"])
+    world = _world_root(item) / _active_world_name(item)
+    if not world.is_dir():
+        raise core.ManagerError("Active Bedrock world directory does not exist. Start the server once, then stop it before installing packs.")
     with tempfile.TemporaryDirectory(prefix="mmanager-pack-") as tmp:
         stage = Path(tmp)
         try:
@@ -210,9 +213,6 @@ def install_bedrock_resource_pack(sid, fileobj, original_filename, required=Fals
             raise core.ManagerError("This resource pack is already installed.")
         core.create_backup(sid)
         shutil.copytree(pack_root, target, symlinks=False)
-    world = _world_root(item) / _active_world_name(item)
-    if not world.is_dir():
-        raise core.ManagerError("Active Bedrock world directory does not exist.")
     manifest_file = world / "world_resource_packs.json"
     entries = []
     if manifest_file.is_file():
