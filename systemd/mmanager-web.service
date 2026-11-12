@@ -6,6 +6,7 @@ Wants=network.target
 Type=simple
 User=mmanager
 Group=mmanager
+SupplementaryGroups=systemd-journal
 WorkingDirectory=/opt/mmanager/current
 Environment=MMANAGER_DATA=/var/lib/mmanager
 Environment=MMANAGER_CONFIG=/etc/mmanager
