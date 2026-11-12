@@ -67,9 +67,8 @@ def server_settings(sid):
 def update_server_settings(sid,changes):
  item=store.get_server(sid)
  if not item: raise ManagerError("GM-108: Server not found")
- allowed={"motd","max-players","difficulty","gamemode","hardcore","pvp","online-mode","white-list","enforce-whitelist","view-distance","simulation-distance","spawn-protection","allow-flight","allow-nether","level-name","level-seed","level-type","server-port","server-ip","enable-command-block","enable-rcon","rcon.port","rcon.password","player-idle-timeout","rate-limit","max-world-size","broadcast-console-to-ops","broadcast-rcon-to-ops","force-gamemode","resource-pack","resource-pack-sha1","entity-broadcast-range-percentage","network-compression-threshold","op-permission-level","function-permission-level","allow-cheats","tick-distance","server-name","server-portv6","allow-list","default-player-permission-level","max-threads","enable-lan-visibility","enable-lan-broadcast","texturepack-required","content-log-file-enabled"}
  for k,v in changes.items():
-  if k not in allowed or not re.fullmatch(r"[A-Za-z0-9_. -]{0,512}",str(v)): raise ManagerError("GM-240: Invalid or unsupported property: "+str(k))
+  if not re.fullmatch(r"[a-z0-9_.-]{1,64}",k) or not re.fullmatch(r"[A-Za-z0-9_. -]{0,512}",str(v)): raise ManagerError("GM-240: Invalid server property: "+str(k))
  path=Path(item["directory"])/"server.properties"; current=server_settings(sid)["settings"]
  current.update({k:str(v) for k,v in changes.items()})
  tmp=path.with_suffix(".properties.tmp")
