@@ -79,7 +79,7 @@ on_error(){
    ln -sfn "$OLD" "$CURRENT.rollback" || true
    mv -Tf "$CURRENT.rollback" "$CURRENT" || true
   else
-   rm -f "$CURRENT" "$CURRENT.rollback"
+   rm -f "$CURRENT" "$CURRENT.rollback" /usr/local/bin/Mmanager
   fi
   if [[ "$OLD_JOURNAL_MEMBER" == "1" ]]; then usermod -aG systemd-journal mmanager 2>/dev/null || true; else gpasswd -d mmanager systemd-journal >/dev/null 2>&1 || true; fi
   restore_snapshot || true
@@ -168,8 +168,11 @@ PY
 fi
 if [[ ! -s /etc/mmanager/api.token ]]; then
  API_TOKEN=$(python3 -c 'import secrets;print(secrets.token_urlsafe(48))')
- printf '%s' "$API_TOKEN" >"$TMP/api.token"
- install -o root -g mmanager -m 0640 "$TMP/api.token" /etc/mmanager/api.token
+ API_TMP=$(mktemp /etc/mmanager/.api-token.XXXXXX)
+ printf '%s' "$API_TOKEN" >"$API_TMP"
+ chown root:mmanager "$API_TMP"
+ chmod 0640 "$API_TMP"
+ mv -f "$API_TMP" /etc/mmanager/api.token
 fi
 chown root:mmanager /etc/mmanager/auth.json /etc/mmanager/api.token
 chmod 0640 /etc/mmanager/auth.json /etc/mmanager/api.token
@@ -297,7 +300,11 @@ p.chmod(0o600)
 PY
 fi
 echo "Panel: $PANEL_URL"
-echo "Credentials file: /root/mmanager-admin-credentials.txt (password is never printed)"
+if [[ -f /root/mmanager-admin-credentials.txt ]]; then
+ echo "Credentials file: /root/mmanager-admin-credentials.txt (password is never printed)"
+else
+ echo "Existing administrator credentials preserved; no password was printed."
+fi
 echo "Manage panel path, password and port from the MManager CLI (option 7)."
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then ufw allow "$PANEL_PORT/tcp" || say "Could not update UFW; open TCP $PANEL_PORT manually"; fi
 echo "Allow TCP port $PANEL_PORT in your VPS/cloud firewall if applicable."
