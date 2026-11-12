@@ -4,7 +4,14 @@ umask 027
 REPO="Amir9831/MManager"
 CURRENT="/opt/mmanager/current"
 say(){ printf '\n[MManager] %s\n' "$*"; }
-fail(){ printf '\n[MManager][FATAL] %s\n' "$*" >&2; exit 1; }
+fail(){
+ printf '\n[MManager][FATAL] %s\n' "$*" >&2
+ if [[ "${ROLLBACK_ACTIVE:-0}" == "1" ]]; then
+  on_error 1 "${BASH_LINENO[0]:-0}"
+ else
+  exit 1
+ fi
+}
 
 [[ $EUID -eq 0 ]] || fail "Run: curl -fsSL https://raw.githubusercontent.com/$REPO/main/install.sh | sudo bash"
 [[ -r /etc/os-release ]] || fail "Cannot detect OS"
