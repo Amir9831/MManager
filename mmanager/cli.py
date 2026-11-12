@@ -1,12 +1,64 @@
-import os,shutil,subprocess
-from . import store,core
+import os,shutil,subprocess,sys
+from getpass import getpass
+from argon2 import PasswordHasher
+from . import store,core,auth
+from .settings import AUTH_FILE
+from .webconfig import ensure,save
+
 def ctl(a,u):
  cmd=["systemctl",a,u]
  if os.geteuid()!=0: cmd=["sudo","-n",*cmd]
- subprocess.run(cmd,check=False)
+ return subprocess.run(cmd,check=False).returncode == 0
+
+def web_menu():
+ while True:
+  cfg=ensure()
+  print("\\nWeb panel management")
+  print(f"1 Change panel path (current: /{cfg['path']}/)")
+  print(f"2 Change administrator password")
+  print(f"3 Change panel port (current: {cfg['port']})")
+  print("4 Show panel URL")
+  print("0 Back")
+  c=input("> ").strip()
+  if c=="0": return
+  if c=="1":
+   value=input("New path (blank = generate random): ").strip().strip("/")
+   if not value:
+    import secrets
+    value=secrets.token_urlsafe(24)
+   if len(value)<24 or not value.replace("-","").replace("_","").isalnum():
+    print("Path must be at least 24 URL-safe characters."); continue
+   cfg["path"]=value
+   save(cfg)
+   if ctl("restart","mmanager-web.service"): print("Path updated.")
+   else: print("Saved, but web service restart failed; run: sudo systemctl restart mmanager-web")
+  elif c=="2":
+   p=getpass("New administrator password (min 12 chars): ")
+   if len(p)<12: print("Password must be at least 12 characters."); continue
+   if p!=getpass("Confirm password: "): print("Passwords do not match."); continue
+   import json
+   data=json.loads(AUTH_FILE.read_text())
+   data["password_hash"]=PasswordHasher().hash(p)
+   tmp=AUTH_FILE.with_suffix(".tmp"); tmp.write_text(json.dumps(data)); tmp.chmod(0o640); tmp.replace(AUTH_FILE)
+   print("Administrator password changed. Existing browser sessions remain valid until token rotation.")
+  elif c=="3":
+   raw=input("New TCP port (1024-65535): ").strip()
+   try: port=int(raw)
+   except ValueError: print("Invalid port."); continue
+   if not 1024<=port<=65535: print("Port must be between 1024 and 65535."); continue
+   cfg["port"]=port; save(cfg)
+   if ctl("restart","mmanager-web.service"): print("Port updated.")
+   else: print("Saved, but web service restart failed; check whether the port is already in use.")
+  elif c=="4":
+   import urllib.request
+   try: ip=urllib.request.urlopen("https://api.ipify.org",timeout=5).read().decode().strip()
+   except Exception: ip="<PUBLIC_IP>"
+   print(f"Panel: http://{ip}:{cfg['port']}/{cfg['path']}/")
+  else: print("Invalid selection")
+
 def main():
  while True:
-  print("\nMManager\n1 Servers\n2 Restart Core\n3 Restart Web\n4 Start services\n5 Stop services\n6 Diagnostics\n0 Exit")
+  print("\\nMManager\\n1 Servers\\n2 Restart Core\\n3 Restart Web\\n4 Start services\\n5 Stop services\\n6 Diagnostics\\n7 Web panel management\\n0 Exit")
   c=input("> ").strip()
   if c=="0": return
   if c=="1":
@@ -29,4 +81,5 @@ def main():
   elif c=="5":
    ctl("stop","mmanager-web.service"); ctl("stop","mmanager-core.service")
   elif c=="6": subprocess.run(["systemctl","--failed","--no-pager"])
+  elif c=="7": web_menu()
   else: print("Invalid selection")
