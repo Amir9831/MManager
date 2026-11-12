@@ -60,6 +60,7 @@ def web_menu():
    else:
     cfg["port"]=old_port; save(cfg)
     env.write_text(f"UVICORN_PORT={old_port}\n"); env.chmod(0o640)
+    ctl("restart","mmanager-web.service")
     print("Port change was reverted because the web service could not restart. Check whether the new port is already in use.")
   elif c=="4":
    import urllib.request
