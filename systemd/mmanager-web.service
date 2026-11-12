@@ -1,17 +1,23 @@
 [Unit]
-Description=MManager Web Panel
-After=network.target
+Description=MManager Public Web Panel and API
+After=network.target mmanager-core.service
+Wants=network.target
 [Service]
 Type=simple
 User=mmanager
 Group=mmanager
 WorkingDirectory=/opt/mmanager/current
-ExecStart=/usr/bin/python3 -m http.server 8766 --bind 127.0.0.1 --directory /opt/mmanager/current/mmanager/web
+Environment=MMANAGER_DATA=/var/lib/mmanager
+Environment=MMANAGER_CONFIG=/etc/mmanager
+EnvironmentFile=-/etc/mmanager/web.env
+Environment=UVICORN_HOST=0.0.0.0
+ExecStart=/opt/mmanager/current/venv/bin/uvicorn mmanager.api:public_app
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
+ReadWritePaths=/var/lib/mmanager /var/log/mmanager /etc/mmanager
 [Install]
 WantedBy=multi-user.target
