@@ -57,3 +57,17 @@ def test_bedrock_install_uses_verified_zip(monkeypatch,tmp_path):
     assert (root/"bedrock_server").exists()
     assert "LD_LIBRARY_PATH" in (root/"run.sh").read_text()
     assert "server-port=19132" in (root/"server.properties").read_text()
+
+
+def test_server_logs_do_not_invoke_sudo(monkeypatch, tmp_path):
+ setup(monkeypatch,tmp_path)
+ item=core.create_server("logs","java","1.21.4","vanilla",True)
+ from types import SimpleNamespace
+ calls=[]
+ def fake_run(cmd, **kwargs):
+  calls.append(cmd)
+  return SimpleNamespace(returncode=0,stdout="Minecraft started",stderr="")
+ monkeypatch.setattr(core.subprocess,"run",fake_run)
+ assert core.server_logs(item["id"],50)=="Minecraft started"
+ assert calls[0][0]=="/usr/bin/journalctl"
+ assert "sudo" not in calls[0]
