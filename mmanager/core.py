@@ -165,10 +165,11 @@ def server_logs(sid,lines=100):
  item=store.get_server(sid)
  if not item:raise ManagerError("GM-108: Server not found")
  if not 1<=lines<=500:raise ManagerError("GM-110: Invalid line count")
- cmd=["/usr/bin/journalctl","-u",f"mmanager-mc@{item['name']}.service","-n",str(lines),"--no-pager","-o","cat"]
+ cmd=["/usr/bin/journalctl","-u",f"mmanager-mc@{item['name']}.service","--no-pager","-o","cat","-n",str(lines)]
  if os.geteuid()!=0:cmd=["/usr/bin/sudo","-n",*cmd]
- p=subprocess.run(cmd,capture_output=True,text=True,timeout=20)
- if p.returncode:raise ManagerError("GM-221: Cannot read logs")
+ try:p=subprocess.run(cmd,capture_output=True,text=True,timeout=20)
+ except (OSError,subprocess.TimeoutExpired) as exc:raise ManagerError("GM-221: Cannot read logs: "+str(exc))
+ if p.returncode:raise ManagerError("GM-221: Cannot read logs: "+(p.stderr.strip() or p.stdout.strip())[:300])
  return p.stdout[-50000:]
 def create_backup(sid):
  item=store.get_server(sid)
