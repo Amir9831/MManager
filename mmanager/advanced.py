@@ -301,7 +301,7 @@ def _bedrock_online(item):
             continue
         marker = "player " + kind + ":"
         payload = line[lowered.index(marker) + len(marker):].strip()
-        parts = re.split(r",\\s*xuid:\\s*", payload, maxsplit=1, flags=re.I)
+        parts = re.split(r",\s*xuid:\s*", payload, maxsplit=1, flags=re.I)
         if len(parts) != 2 or not re.fullmatch(r"[0-9]+", parts[1].strip()):
             continue
         name, xuid = parts[0].strip(), parts[1].strip()
