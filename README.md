@@ -26,7 +26,7 @@ Admin credentials: `/root/mmanager-admin-credentials.txt` (mode 0600). The insta
 - Three player lists (online, known offline, admins), Java OP levels 1–4, Bedrock Operator/Member/Visitor roles, Kick, and Java/Cross-play Ban/Pardon.
 - Bedrock Dedicated Server has no native player ban list; its allowlist can restrict access only when enabled.
 - Process-level CPU and RAM telemetry through same-user `/proc` access; no sudo elevation is needed.
-- Read-only journal access through `systemd-journal` and narrowly scoped systemd lifecycle authorization through PolicyKit; compatible with `NoNewPrivileges=true`.
+- Per-server file-backed logs with bounded tail reads and log rotation; systemd lifecycle authorization is restricted through PolicyKit and remains compatible with `NoNewPrivileges=true`.
 - World upload/switch management with ZIP validation and pre-change backups.
 - Resource-pack configuration for Java/Cross-play and `.mcpack` installation for Bedrock.
 - Guarded Java/Bedrock/Cross-play switching; incompatible worlds are archived rather than silently converted.
@@ -42,4 +42,4 @@ Admin credentials: `/root/mmanager-admin-credentials.txt` (mode 0600). The insta
 - Minecraft mods are not plugins. Fabric/Forge mod-loader installation is not yet implemented; the panel explains this instead of allowing incompatible mod JAR uploads.
 - The panel should be exposed through HTTPS using a trusted reverse proxy for Internet-facing deployments. The random URL path is an additional layer, not a replacement for authentication.
 
-MManager is an early functional release. Back up important worlds before upgrades or plugin changes and review [SECURITY.md](SECURITY.md) and [docs/INSTALL.md](docs/INSTALL.md).
+Version 0.7.0 keeps the public panel on HTTP as requested; use a trusted HTTPS reverse proxy when exposing it beyond a trusted network. Back up important worlds before upgrades or plugin changes and review [SECURITY.md](SECURITY.md) and [docs/INSTALL.md](docs/INSTALL.md).
