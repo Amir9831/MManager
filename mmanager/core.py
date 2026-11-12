@@ -1,4 +1,4 @@
-import json,re,secrets,shutil,subprocess,tarfile,urllib.request,uuid,os,zipfile
+import json,re,secrets,shutil,subprocess,tarfile,urllib.request,uuid,os,zipfile,zipfile
 from pathlib import Path
 from . import store,settings
 from .ports import choose_port
@@ -99,15 +99,30 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
   with store.connect() as db:
    db.execute("BEGIN IMMEDIATE")
    used_tcp={r[0] for r in db.execute("SELECT java_port FROM servers WHERE java_port IS NOT NULL")}
-   item["java_port"]=choose_port(25565,"tcp",used_tcp)
+   item["java_port"]=choose_port(19132 if edition=="bedrock" else 25565,"udp" if edition=="bedrock" else "tcp",used_tcp)
    if edition=="crossplay":
     used_udp={r[0] for r in db.execute("SELECT bedrock_port FROM servers WHERE bedrock_port IS NOT NULL")}
     item["bedrock_port"]=choose_port(19132,"udp",used_udp)
    db.execute("INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory,eula_accepted) VALUES(:id,:name,:edition,:software,:version,:java_port,:bedrock_port,:directory,:eula_accepted)",item);db.commit()
-  artifact=_vanilla(version) if software=="vanilla" else _paper(version)
-  _download(artifact["url"],d/"server.jar",artifact.get("checksum"),artifact.get("algorithm","sha256"))
-  (d/"eula.txt").write_text("eula=true\n")
-  (d/"server.properties").write_text(f"server-port={item['java_port']}\n")
+  artifact=_bedrock(version) if edition=="bedrock" else (_vanilla(version) if software=="vanilla" else _paper(version))
+  archive=d/("bedrock.zip" if edition=="bedrock" else "server.jar")
+  _download(artifact["url"],archive,artifact.get("checksum"),artifact.get("algorithm","sha256"))
+  if edition=="bedrock":
+   with zipfile.ZipFile(archive) as zf:
+    for member in zf.infolist():
+     if not (d/member.filename).resolve().is_relative_to(d.resolve()): raise ManagerError("GM-232: Unsafe Bedrock archive member")
+    zf.extractall(d)
+   archive.unlink(missing_ok=True)
+   binary=d/"bedrock_server"
+   if not binary.exists(): raise ManagerError("GM-217: Bedrock binary missing from official archive")
+   binary.chmod(0o750)
+   (d/"server.properties").write_text("server-port=19132\\nserver-portv6=19133\\n")
+   (d/"run.sh").write_text("#!/bin/sh\\ncd /var/lib/mmanager/servers/"+name+"\\nexec ./bedrock_server\\n")
+  else:
+   (d/"eula.txt").write_text("eula=true\\n")
+   (d/"server.properties").write_text(f"server-port={item['java_port']}\\n")
+   (d/"run.sh").write_text("#!/bin/sh\\ncd /var/lib/mmanager/servers/"+name+"\\nexec /usr/bin/java -Xms256M -Xmx1G -jar server.jar nogui\\n")
+  (d/"run.sh").chmod(0o750)
   if edition=="crossplay":
    plugins=d/"plugins";plugins.mkdir()
    for project,filename in (("geyser","Geyser-Spigot.jar"),("floodgate","floodgate-spigot.jar")):
