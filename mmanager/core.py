@@ -36,7 +36,7 @@ def _bedrock(version):
  entry=next((x for x in links if x.get("downloadType")=="serverBedrockLinux"),None)
  if not entry: raise ManagerError("GM-216: Official Bedrock Linux download unavailable")
  url=entry.get("downloadUrl","")
- match=re.search(r"bedrock-server-([0-9.]+)\\.zip$",url)
+ match=re.search(r"bedrock-server-([0-9.]+)\.zip$",url)
  if not match or version not in {"latest",match.group(1)}: raise ManagerError("GM-216: Requested Bedrock version is not the current official release")
  return {"url":url,"checksum":None,"algorithm":"sha256"}
 
@@ -44,7 +44,7 @@ def available_versions(edition):
  if edition not in {"java","bedrock","crossplay"}: raise ManagerError("GM-102: Invalid edition")
  if edition=="bedrock":
   artifact=_bedrock("latest")
-  version=re.search(r"bedrock-server-([0-9.]+)\\.zip$",artifact["url"]).group(1)
+  version=re.search(r"bedrock-server-([0-9.]+)\.zip$",artifact["url"]).group(1)
   return {"latest":version,"versions":[{"id":version,"type":"release"}]}
  manifest=_json("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
  versions=[v for v in manifest.get("versions",[]) if v.get("type")=="release"]
