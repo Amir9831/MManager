@@ -2,7 +2,7 @@
 import json, os, re, socket, struct, subprocess, time, urllib.parse, urllib.request
 from pathlib import Path
 from . import store
-from .core import ManagerError, _active
+from .core import ManagerError, _active, SERVER_LOG_DIR
 
 def _server(sid):
     item=store.get_server(sid)
@@ -95,14 +95,20 @@ def console(sid, command):
     return {"response": _rcon(item, command)}
 
 
-def _java_online_from_logs(item):
+def _recent_server_logs(item, limit=2000):
+    path = SERVER_LOG_DIR / (item["name"] + ".log")
     try:
-        logs = subprocess.run(
-            ["/usr/bin/journalctl", "--quiet", "-u", "mmanager-mc@" + item["name"] + ".service",
-             "--no-pager", "-o", "cat", "-n", "2000"],
-            capture_output=True, text=True, timeout=10, check=True).stdout
-    except Exception:
-        return []
+        from collections import deque
+        tail = deque(maxlen=limit)
+        with path.open("r", errors="replace") as stream:
+            tail.extend(stream)
+        return "".join(tail)
+    except OSError:
+        return ""
+
+
+def _java_online_from_logs(item):
+    logs = _recent_server_logs(item)
     states = {}
     for line in logs.splitlines():
         joined = re.search(r":\s*([A-Za-z0-9_]{1,16}) joined the game", line, re.I)
@@ -286,13 +292,7 @@ def _read_json(path, default):
 
 
 def _bedrock_online(item):
-    try:
-        logs = subprocess.run(
-            ["/usr/bin/journalctl", "--quiet", "-u", "mmanager-mc@" + item["name"] + ".service",
-             "--no-pager", "-o", "cat", "-n", "2000"],
-            capture_output=True, text=True, timeout=10, check=True).stdout
-    except Exception:
-        logs = ""
+    logs = _recent_server_logs(item)
     states = {}
     for line in logs.splitlines():
         connected = re.search(r"Player connected:\s*(.*?),\s*xuid:\s*([0-9]+)", line, re.I)
