@@ -4,9 +4,9 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from .webconfig import load as load_web_config
 from pydantic import BaseModel,Field
-from . import store,core,auth
+from . import store,core,auth,advanced
 app=FastAPI(title="MManager API",version="0.3.0")
-app.add_middleware(CORSMiddleware,allow_origins=[],allow_credentials=False,allow_methods=["GET","POST","PUT"],allow_headers=["Content-Type","Authorization"])
+app.add_middleware(CORSMiddleware,allow_origins=[],allow_credentials=False,allow_methods=["GET","POST","PUT","DELETE"],allow_headers=["Content-Type","Authorization"])
 class Login(BaseModel): password:str=Field(min_length=1,max_length=256)
 class SetupServer(BaseModel):
  edition:str=Field(pattern="^(java|bedrock|crossplay)$")
@@ -14,6 +14,16 @@ class SetupServer(BaseModel):
  version:str=Field(min_length=1,max_length=40)
  accept_eula:bool=False
 class SettingsUpdate(BaseModel): settings:dict[str,str]
+class RCONConfig(BaseModel):
+ enabled:bool
+ password:str|None=None
+ port:int=25575
+class ConsoleCommand(BaseModel): command:str
+class Moderation(BaseModel):
+ action:str
+ player:str
+ reason:str=""
+class PluginInstall(BaseModel): version_id:str
 def secured(authorization:str|None=Header(default=None)):
  token=authorization[7:] if authorization and authorization.startswith("Bearer ") else ""
  if not auth.verify_token(token): raise HTTPException(401,detail="Authentication required")
@@ -64,7 +74,8 @@ def logs(lines:int=200,_:bool=Depends(secured)):
 def get_settings(_:bool=Depends(secured)):
  item=current_server()
  if not item:raise HTTPException(404,detail="No server is configured")
- try:return core.server_settings(item["id"])
+ try:
+  result=core.server_settings(item["id"]); result["settings"].pop("rcon.password",None); return result
  except core.ManagerError as e:raise HTTPException(400,detail=str(e))
 @app.put("/api/server/settings")
 def put_settings(p:SettingsUpdate,_:bool=Depends(secured)):
@@ -90,6 +101,60 @@ def restore(bid:str,confirm:bool=False,_:bool=Depends(secured)):
  if not item:raise HTTPException(404,detail="No server is configured")
  try:return core.restore_backup(item["id"],bid,confirm)
  except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+
+@app.get("/api/server/telemetry")
+def telemetry(_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return advanced.telemetry(item["id"])
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+@app.post("/api/server/rcon")
+def rcon_config(p:RCONConfig,_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return advanced.configure_rcon(item["id"],p.enabled,p.password,p.port)
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+@app.post("/api/server/console")
+def console(p:ConsoleCommand,_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return advanced.console(item["id"],p.command)
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+@app.get("/api/server/players")
+def players(_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return advanced.players(item["id"])
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+@app.post("/api/server/players/moderate")
+def moderate(p:Moderation,_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return advanced.moderate(item["id"],p.action,p.player,p.reason)
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+@app.get("/api/server/plugins")
+def plugins(_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return advanced.installed_plugins(item["id"])
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+@app.get("/api/plugins/search")
+def search_plugins(q:str,_:bool=Depends(secured)):
+ try:return advanced.plugin_search(q)
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+@app.post("/api/server/plugins")
+def add_plugin(p:PluginInstall,_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return advanced.install_plugin(item["id"],p.version_id)
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+@app.delete("/api/server/plugins/{filename}")
+def delete_plugin(filename:str,_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return advanced.remove_plugin(item["id"],filename)
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+
 app.mount("/",StaticFiles(directory=str(Path(__file__).parent/"web"),html=True),name="panel")
 class PathPrefixApp:
  def __init__(self,inner):self.inner=inner
