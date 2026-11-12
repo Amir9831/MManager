@@ -295,14 +295,20 @@ def _bedrock_online(item):
     logs = _recent_server_logs(item)
     states = {}
     for line in logs.splitlines():
-        connected = re.search(r"Player connected:\s*(.*?),\s*xuid:\s*([0-9]+)", line, re.I)
-        disconnected = re.search(r"Player disconnected:\s*(.*?),\s*xuid:\s*([0-9]+)", line, re.I)
-        match = connected or disconnected
-        if match:
-            name, xuid = match.group(1).strip(), match.group(2)
-            states[name.lower()] = {"name": name, "xuid": xuid, "online": bool(connected)}
-    return list(states.values())
-
+        lowered = line.lower()
+        kind = "connected" if "player connected:" in lowered else "disconnected" if "player disconnected:" in lowered else None
+        if not kind:
+            continue
+        marker = "player " + kind + ":"
+        payload = line[lowered.index(marker) + len(marker):].strip()
+        parts = re.split(r",\\s*xuid:\\s*", payload, maxsplit=1, flags=re.I)
+        if len(parts) != 2 or not re.fullmatch(r"[0-9]+", parts[1].strip()):
+            continue
+        name, xuid = parts[0].strip(), parts[1].strip()
+        if not name:
+            continue
+        states[name.lower()] = {"name": name, "xuid": xuid, "online": kind == "connected"}
+    return [player for player in states.values() if player["online"]]
 def _proc_cpu_ticks(raw):
     """Read utime+stime from /proc/<pid>/stat without being confused by spaces in comm."""
     close = raw.rfind(")")
