@@ -52,10 +52,14 @@ def web_menu():
    try: port=int(raw)
    except ValueError: print("Invalid port."); continue
    if not 1024<=port<=65535: print("Port must be between 1024 and 65535."); continue
+   old_port=cfg["port"]
    cfg["port"]=port; save(cfg)
-   env=CONFIG / "web.env"; env.write_text(f"UVICORN_PORT={port}\n"); env.chmod(0o640)
+   env=CONFIG / "web.env"; env.write_text(f"UVICORN_PORT={port}\\n"); env.chmod(0o640)
    if ctl("restart","mmanager-web.service"): print("Port updated.")
-   else: print("Saved, but web service restart failed; check whether the port is already in use.")
+   else:
+    cfg["port"]=old_port; save(cfg)
+    env.write_text(f"UVICORN_PORT={old_port}\\n"); env.chmod(0o640)
+    print("Port change was reverted because the web service could not restart. Check whether the new port is already in use.")
   elif c=="4":
    import urllib.request
    try: ip=urllib.request.urlopen("https://api.ipify.org",timeout=5).read().decode().strip()
