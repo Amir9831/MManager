@@ -257,3 +257,30 @@ def test_bedrock_status_detects_wrong_udp_port(monkeypatch, tmp_path):
     assert status["health"] == "degraded"
     assert status["expected"] == [{"protocol": "udp", "port": 19132}]
     assert "UDP/19132" in status["error"]
+
+
+
+def test_crossplay_udp_allocation_reserves_existing_bedrock_udp(monkeypatch, tmp_path):
+    setup(monkeypatch, tmp_path)
+    with store.connect() as db:
+        db.execute(
+            "INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory,eula_accepted) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            ("bedrock-id", "bedrockexisting", "bedrock", "bedrock", "1.26.63", 19132, None,
+             str(tmp_path / "servers" / "bedrockexisting"), 1),
+        )
+    item = core.create_server("crossudp", "crossplay", "1.21.4", "paper", True)
+    assert item["bedrock_port"] == 19133
+
+
+def test_tcp_and_udp_can_share_same_numeric_port(monkeypatch, tmp_path):
+    setup(monkeypatch, tmp_path)
+    with store.connect() as db:
+        db.execute(
+            "INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory,eula_accepted) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            ("java-id", "javaexisting", "java", "vanilla", "1.21.4", 19132, None,
+             str(tmp_path / "servers" / "javaexisting"), 1),
+        )
+    item = core.create_server("bedrockshare", "bedrock", "1.26.63", "bedrock", True)
+    assert item["java_port"] == 19132
