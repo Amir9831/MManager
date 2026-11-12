@@ -183,6 +183,8 @@ def remove_plugin(sid, filename):
     if _active(item): raise ManagerError("Stop the server before removing a plugin.")
     name=Path(str(filename)).name
     if name!=filename or not name.endswith(".jar"): raise ManagerError("Invalid plugin filename.")
+    if item["edition"]=="crossplay" and name.lower() in {"geyser-spigot.jar","floodgate-spigot.jar"}:
+        raise ManagerError("Core Cross-play plugins cannot be removed from the plugin manager.")
     target=Path(item["directory"])/"plugins"/name
     if not target.is_file() or target.is_symlink(): raise ManagerError("Plugin file not found.")
     target.unlink()
