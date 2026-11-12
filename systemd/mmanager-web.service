@@ -10,9 +10,9 @@ SupplementaryGroups=systemd-journal
 WorkingDirectory=/opt/mmanager/current
 Environment=MMANAGER_DATA=/var/lib/mmanager
 Environment=MMANAGER_CONFIG=/etc/mmanager
+Environment=UVICORN_PORT=8766
 EnvironmentFile=-/etc/mmanager/web.env
-Environment=UVICORN_HOST=0.0.0.0
-ExecStart=/opt/mmanager/current/venv/bin/uvicorn mmanager.api:public_app
+ExecStart=/opt/mmanager/current/venv/bin/uvicorn mmanager.api:public_app --host 0.0.0.0 --port ${UVICORN_PORT}
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
