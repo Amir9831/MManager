@@ -48,7 +48,7 @@ def setup(p:SetupServer,_:bool=Depends(secured)):
  if p.edition=="java" and p.software not in {"vanilla","paper"}:raise HTTPException(400,detail="Choose Vanilla or Paper for Java Edition")
  try:return core.create_server("minecraft",p.edition,p.version,p.software,p.accept_eula)
  except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
-@app.post("/api/server/{action}")
+@app.post("/api/server/actions/{action}")
 def action(action:str,_:bool=Depends(secured)):
  item=current_server()
  if not item:raise HTTPException(404,detail="No server is configured")
