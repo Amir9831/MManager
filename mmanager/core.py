@@ -341,6 +341,188 @@ def rollback_server(sid):
     store.update_server_version(sid,previous)
     return {"rolled_back":True,"version":previous,"restored_backup":backup_id}
 
+def _safe_extract_bedrock(archive, destination):
+    with zipfile.ZipFile(archive) as zf:
+        for member in zf.infolist():
+            name = member.filename.replace("\\\\", "/")
+            parts = Path(name).parts
+            if name.startswith("/") or ".." in parts or (parts and ":" in parts[0]):
+                raise ManagerError("GM-232: Unsafe Bedrock archive member")
+        zf.extractall(destination)
+    if not (destination / "bedrock_server").is_file():
+        raise ManagerError("GM-217: Bedrock archive has no server binary")
+
+
+def _write_server_runtime(root, edition, software, version, java_port, bedrock_port):
+    if edition == "bedrock":
+        artifact = _bedrock(version)
+        archive = root / "bedrock.zip"
+        _download(artifact["url"], archive, artifact.get("checksum"), artifact.get("algorithm", "sha256"))
+        _safe_extract_bedrock(archive, root)
+        archive.unlink(missing_ok=True)
+        binary = root / "bedrock_server"
+        binary.chmod(0o750)
+        props = (Path(__file__).parent / "templates" / "bedrock-server.properties").read_text()
+        props = re.sub(r"(?m)^server-port=.*$", "server-port=" + str(java_port), props)
+        (root / "server.properties").write_text(props)
+        (root / "run.sh").write_text("#!/bin/sh\\ncd " + str(root) + "\\nLD_LIBRARY_PATH=. exec ./bedrock_server\\n")
+    else:
+        artifact = _vanilla(version) if software == "vanilla" else _paper(version)
+        jar = root / "server.jar"
+        _download(artifact["url"], jar, artifact.get("checksum"), artifact.get("algorithm", "sha1" if software == "vanilla" else "sha256"))
+        if not (root / "server.properties").exists():
+            props = (Path(__file__).parent / "templates" / "java-server.properties").read_text()
+            (root / "server.properties").write_text(props)
+        _set_property_file(root / "server.properties", "server-port", str(java_port))
+        (root / "eula.txt").write_text("eula=true\\n")
+        (root / "run.sh").write_text("#!/bin/sh\\ncd " + str(root) + "\\nexec /usr/bin/java -Xms256M -Xmx1G -jar server.jar nogui\\n")
+    (root / "run.sh").chmod(0o750)
+    if edition == "crossplay":
+        plugins = root / "plugins"
+        plugins.mkdir(exist_ok=True)
+        for project, filename in (("geyser", "Geyser-Spigot.jar"), ("floodgate", "floodgate-spigot.jar")):
+            dest = plugins / filename
+            if not dest.exists():
+                _download("https://download.geysermc.org/v2/projects/" + project + "/versions/latest/builds/latest/downloads/spigot", dest)
+        geyser = plugins / "Geyser-Spigot"
+        geyser.mkdir(exist_ok=True)
+        config = (Path(__file__).parent / "templates" / "crossplay-geyser.yml").read_text()
+        config = config.replace("port: 19132", "port: " + str(bedrock_port)).replace("port: 25565", "port: " + str(java_port))
+        (geyser / "config.yml").write_text(config)
+
+
+def _set_property_file(path, key, value):
+    path = Path(path)
+    rows = path.read_text(errors="replace").splitlines() if path.exists() else []
+    result = []
+    found = False
+    for row in rows:
+        if row and not row.lstrip().startswith("#") and "=" in row and row.split("=", 1)[0].strip() == key:
+            if not found:
+                result.append(key + "=" + str(value))
+                found = True
+        else:
+            result.append(row)
+    if not found:
+        result.append(key + "=" + str(value))
+    path.write_text("\\n".join(result) + "\\n")
+
+
+def switch_server(sid, edition, software, version, confirm_world_reset=False):
+    """Switch edition/software transactionally; cross-edition worlds are archived, never silently converted."""
+    item = store.get_server(sid)
+    if not item:
+        raise ManagerError("GM-108: Server not found")
+    if edition not in {"java", "bedrock", "crossplay"}:
+        raise ManagerError("GM-102: Invalid target edition")
+    if software not in {"vanilla", "paper", "bedrock"}:
+        raise ManagerError("GM-103: Invalid target software")
+    if (edition == "bedrock" and software != "bedrock") or (edition == "crossplay" and software != "paper") or (edition == "java" and software not in {"vanilla", "paper"}):
+        raise ManagerError("GM-103: Software does not match target edition")
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,40}", str(version)):
+        raise ManagerError("GM-105: Invalid Minecraft version")
+    cross_edition = item["edition"] != edition and {item["edition"], edition} & {"bedrock"}
+    if cross_edition and confirm_world_reset is not True:
+        raise ManagerError("Switching between Java and Bedrock does not convert worlds. Explicitly confirm that the old world will be archived and a new world created.")
+    if item["edition"] == edition and item["software"] == software and item["version"] == version:
+        return {"switched": False, "unchanged": True, "edition": edition, "software": software, "version": version}
+    if item["edition"] == edition and item["software"] == software:
+        result = update_server(sid, version)
+        return {"switched": True, "edition": edition, "software": software, "version": version, "update": result}
+    if item["edition"] == "bedrock" and edition == "bedrock":
+        result = update_server(sid, version)
+        return {"switched": True, "edition": edition, "software": software, "version": version, "update": result}
+
+    was_active = _active(item)
+    if was_active:
+        _systemctl("stop", item)
+    backup = create_backup(sid)
+    root = Path(item["directory"]).resolve()
+    stage = root.parent / (root.name + ".switch-stage-" + secrets.token_hex(4))
+    archived = root.parent / (root.name + ".archived-" + secrets.token_hex(4))
+    try:
+        if cross_edition:
+            stage.mkdir()
+            _write_server_runtime(stage, edition, software, version,
+                                  19132 if edition == "bedrock" else 25565,
+                                  19132 if edition == "crossplay" else None)
+            # Carry only settings that have equivalent meaning in both editions.
+            old_settings = server_settings(sid)["settings"]
+            common = {"max-players", "difficulty", "gamemode", "online-mode", "motd"}
+            new_values = {k: old_settings[k] for k in common if k in old_settings}
+            if edition == "bedrock":
+                new_values.pop("motd", None)
+                new_values["server-name"] = old_settings.get("server-name", "Bedrock Server")
+            else:
+                new_values["motd"] = old_settings.get("motd", "A Minecraft Server")
+            if new_values:
+                _set_property_file(stage / "server.properties", "_mmanager-placeholder", "")
+                for key, value in new_values.items():
+                    _set_property_file(stage / "server.properties", key, value)
+        else:
+            shutil.copytree(root, stage, symlinks=False)
+            if edition in {"java", "crossplay"}:
+                _write_server_runtime(stage, edition, software, version,
+                                      25565, 19132 if edition == "crossplay" else None)
+                if item["edition"] == "crossplay" and edition == "java":
+                    plugins = stage / "plugins"
+                    disabled = stage / ".mmanager-disabled-plugins"
+                    disabled.mkdir(exist_ok=True)
+                    for filename in ("Geyser-Spigot.jar", "floodgate-spigot.jar"):
+                        source = plugins / filename
+                        if source.exists():
+                            shutil.move(str(source), str(disabled / filename))
+            else:
+                raise ManagerError("Unsupported edition transition.")
+        # Preserve a stable TCP/UDP port allocation in the registry.
+        used_tcp = set()
+        used_udp = set()
+        with store.connect() as db:
+            used_tcp = {r[0] for r in db.execute("SELECT java_port FROM servers WHERE id<>? AND java_port IS NOT NULL", (sid,))}
+            used_udp = {r[0] for r in db.execute("SELECT bedrock_port FROM servers WHERE id<>? AND bedrock_port IS NOT NULL", (sid,))}
+        if edition == "bedrock":
+            java_port = choose_port(19132, "udp", used_tcp)
+            bedrock_port = None
+        else:
+            java_port = choose_port(25565, "tcp", used_tcp)
+            bedrock_port = choose_port(19132, "udp", used_udp) if edition == "crossplay" else None
+        if edition != "bedrock":
+            _set_property_file(stage / "server.properties", "server-port", str(java_port))
+        else:
+            _set_property_file(stage / "server.properties", "server-port", str(java_port))
+        if edition == "crossplay":
+            geyser_cfg = stage / "plugins" / "Geyser-Spigot" / "config.yml"
+            if geyser_cfg.exists():
+                text = geyser_cfg.read_text()
+                text = re.sub(r"(?m)^(\\s*port:)\\s*\\d+", lambda m: m.group(1) + " " + str(bedrock_port), text, count=1)
+                geyser_cfg.write_text(text)
+        root.rename(archived if cross_edition else archived)
+        try:
+            stage.rename(root)
+        except Exception:
+            archived.rename(root)
+            raise
+        with store.connect() as db:
+            db.execute("UPDATE servers SET edition=?,software=?,version=?,java_port=?,bedrock_port=? WHERE id=?",
+                       (edition, software, version, java_port, bedrock_port, sid))
+        shutil.rmtree(archived, ignore_errors=True) if not cross_edition else None
+        if was_active:
+            _systemctl("start", store.get_server(sid))
+        return {"switched": True, "from": {"edition": item["edition"], "software": item["software"], "version": item["version"]},
+                "to": {"edition": edition, "software": software, "version": version}, "backup_id": backup["id"],
+                "world_archived": bool(cross_edition), "restarted": was_active}
+    except Exception:
+        shutil.rmtree(stage, ignore_errors=True)
+        if archived.exists() and not root.exists():
+            archived.rename(root)
+        if was_active and root.exists():
+            try:
+                _systemctl("start", item)
+            except Exception:
+                pass
+        raise
+
+
 def server_status(sid):
     item = store.get_server(sid)
     if not item:
