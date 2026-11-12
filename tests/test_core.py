@@ -41,3 +41,19 @@ def test_server_settings_templates_and_validation(monkeypatch,tmp_path):
     assert saved["max-players"]=="32"
     with pytest.raises(core.ManagerError,match="GM-240"):
         core.update_server_settings(item["id"],{"bad key":"x"})
+
+def test_bedrock_install_uses_verified_zip(monkeypatch,tmp_path):
+    import zipfile
+    setup(monkeypatch,tmp_path)
+    monkeypatch.setattr(core,"_bedrock",lambda v:{"url":"https://invalid.test/bds.zip","checksum":None,"algorithm":"sha256"})
+    def fake_download(url,dest,*args):
+        with zipfile.ZipFile(dest,"w") as archive:
+            archive.writestr("bedrock_server",b"fake executable")
+        return dest.stat().st_size
+    monkeypatch.setattr(core,"_download",fake_download)
+    item=core.create_server("bedrock","bedrock","1.26.63","bedrock",True)
+    root=tmp_path/"servers"/"bedrock"
+    assert item["java_port"]==19132
+    assert (root/"bedrock_server").exists()
+    assert "LD_LIBRARY_PATH" in (root/"run.sh").read_text()
+    assert "server-port=19132" in (root/"server.properties").read_text()
