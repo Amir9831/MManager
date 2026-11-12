@@ -1,6 +1,7 @@
 from fastapi import FastAPI,HTTPException,Depends,Header,Request,UploadFile,File,Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pathlib import Path
 import tarfile
 from .webconfig import load as load_web_config
@@ -121,6 +122,22 @@ def backups(_:bool=Depends(secured)):
  if not item: return {"items":[]}
  try:return {"items":core.list_backups(item["id"])}
  except core.ManagerError as e:raise HTTPException(400,detail=str(e))
+@app.get("/api/server/backups/{bid}/download")
+def download_backup(bid:str,_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:
+  path=core.backup_file(item["id"],bid)
+  return FileResponse(path,media_type="application/gzip",filename=path.name)
+ except core.ManagerError as e:raise HTTPException(404 if "not found" in str(e).lower() else 400,detail=str(e))
+
+@app.delete("/api/server/backups/{bid}")
+def delete_backup(bid:str,_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return core.delete_backup(item["id"],bid)
+ except core.ManagerError as e:raise HTTPException(404 if "not found" in str(e).lower() else 400,detail=str(e))
+
 @app.post("/api/server/backups/{bid}/restore")
 def restore(bid:str,confirm:bool=False,_:bool=Depends(secured)):
  item=current_server()
