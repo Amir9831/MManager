@@ -677,7 +677,7 @@ def _service_listening_ports(item, protocol):
         raise ManagerError("GM-223: Cannot inspect listening sockets")
     ports = set()
     for line in result.stdout.splitlines():
-        if not re.search(r"\\bpid=" + str(pid) + r"(?:,|\\))", line):
+        if not re.search(r"\bpid=" + str(pid) + r"(?:,|\))", line):
             continue
         fields = line.split()
         if len(fields) < 4:
