@@ -191,9 +191,9 @@ def test_bedrock_online_players_use_file_backed_service_logs(monkeypatch, tmp_pa
     )
     raw = advanced._recent_server_logs({"name": "bedrock-test"})
     assert raw == (
-        "Player connected: Alex, xuid: 12345\\n"
-        "Player disconnected: Alex, xuid: 12345\\n"
-        "Player connected: Steve, xuid: 67890\\n"
+        "Player connected: Alex, xuid: 12345\n"
+        "Player disconnected: Alex, xuid: 12345\n"
+        "Player connected: Steve, xuid: 67890\n"
     )
     assert advanced._bedrock_online({"name": "bedrock-test"}) == [
         {"name": "Steve", "xuid": "67890", "online": True}
