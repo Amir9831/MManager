@@ -1,4 +1,5 @@
 import json,re,secrets,shutil,subprocess,tarfile,urllib.request,uuid,os,zipfile,stat
+import yaml
 from collections import deque
 from pathlib import Path
 from . import store,settings
@@ -106,11 +107,13 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
  try:
   with store.connect() as db:
    db.execute("BEGIN IMMEDIATE")
-   used_tcp={r[0] for r in db.execute("SELECT java_port FROM servers WHERE java_port IS NOT NULL")}
-   item["java_port"]=choose_port(19132 if edition=="bedrock" else 25565,"udp" if edition=="bedrock" else "tcp",used_tcp)
+   used_ports={r[0] for r in db.execute("SELECT java_port FROM servers WHERE java_port IS NOT NULL UNION SELECT bedrock_port FROM servers WHERE bedrock_port IS NOT NULL")}
+   if edition=="bedrock":
+    item["java_port"]=choose_port(19132,"udp",used_ports)
+   else:
+    item["java_port"]=choose_port(25565,"tcp",used_ports)
    if edition=="crossplay":
-    used_udp={r[0] for r in db.execute("SELECT bedrock_port FROM servers WHERE bedrock_port IS NOT NULL")}
-    item["bedrock_port"]=choose_port(19132,"udp",used_udp)
+    item["bedrock_port"]=choose_port(19132,"tcp+udp",used_ports | {item["java_port"]})
    db.execute("INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory,eula_accepted) VALUES(:id,:name,:edition,:software,:version,:java_port,:bedrock_port,:directory,:eula_accepted)",item);db.commit()
   artifact=_bedrock(version) if edition=="bedrock" else (_vanilla(version) if software=="vanilla" else _paper(version))
   archive=d/("bedrock.zip" if edition=="bedrock" else "server.jar")
@@ -125,14 +128,14 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
    if not binary.exists(): raise ManagerError("GM-217: Bedrock binary missing from official archive")
    binary.chmod(0o750)
    props=(Path(__file__).parent/"templates"/"bedrock-server.properties").read_text()
-   props=re.sub(r"(?m)^server-port=.*$","server-port="+str(item["java_port"]),props)
    (d/"server.properties").write_text(props)
+   _configure_bedrock_properties(d/"server.properties",item["java_port"])
    (d/"run.sh").write_text("#!/bin/sh\ncd /var/lib/mmanager/servers/"+name+"\nLD_LIBRARY_PATH=. exec ./bedrock_server\n")
   else:
    (d/"eula.txt").write_text("eula=true\n")
    props=(Path(__file__).parent/"templates"/"java-server.properties").read_text()
-   props=re.sub(r"(?m)^server-port=.*$","server-port="+str(item["java_port"]),props)
    (d/"server.properties").write_text(props)
+   _configure_java_properties(d/"server.properties",item["java_port"])
    (d/"run.sh").write_text("#!/bin/sh\ncd /var/lib/mmanager/servers/"+name+"\nexec /usr/bin/java -Xms256M -Xmx1G -jar server.jar nogui\n")
   (d/"run.sh").chmod(0o750)
   if edition=="crossplay":
@@ -140,9 +143,9 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
    for project,filename in (("geyser","Geyser-Spigot.jar"),("floodgate","floodgate-spigot.jar")):
     _download(f"https://download.geysermc.org/v2/projects/{project}/versions/latest/builds/latest/downloads/spigot",plugins/filename)
    geyser=plugins/"Geyser-Spigot";geyser.mkdir(exist_ok=True)
-   geyser_config=(Path(__file__).parent/"templates"/"crossplay-geyser.yml").read_text()
-   geyser_config=geyser_config.replace("port: 19132","port: "+str(item["bedrock_port"])).replace("port: 25565","port: "+str(item["java_port"]))
-   (geyser/"config.yml").write_text(geyser_config)
+   geyser_config=geyser/"config.yml"
+   shutil.copy2(Path(__file__).parent/"templates"/"crossplay-geyser.yml", geyser_config)
+   _configure_geyser(geyser_config, item["bedrock_port"], item["java_port"])
   return item
  except Exception:
   with store.connect() as db:db.execute("DELETE FROM servers WHERE id=?",(item["id"],))
@@ -336,6 +339,17 @@ def update_server(sid, version):
                 stage=tmp/"stage"
                 shutil.copytree(root,stage,symlinks=False)
                 shutil.copy2(downloaded,stage/"server.jar")
+            # Reapply MManager-owned listener settings after replacing the runtime.
+            # This repairs stale/default ports while preserving unrelated user settings.
+            if item["edition"] == "bedrock":
+                _configure_bedrock_properties(stage / "server.properties", item["java_port"])
+            else:
+                _configure_java_properties(stage / "server.properties", item["java_port"])
+            if item["edition"] == "crossplay":
+                geyser_config = stage / "plugins" / "Geyser-Spigot" / "config.yml"
+                if not geyser_config.is_file():
+                    raise ManagerError("GM-237: Cross-play update is missing the Geyser config.yml")
+                _configure_geyser(geyser_config, item["bedrock_port"], item["java_port"])
             state={"backup_id":backup["id"],"previous_version":item["version"],"updated_version":version}
             (stage/"mmanager-update-state.json").write_text(json.dumps(state))
             old=root.parent/(root.name+".update-old-"+secrets.token_hex(4))
@@ -398,8 +412,8 @@ def _write_server_runtime(root, edition, software, version, java_port, bedrock_p
         binary = root / "bedrock_server"
         binary.chmod(0o750)
         props = (Path(__file__).parent / "templates" / "bedrock-server.properties").read_text()
-        props = re.sub(r"(?m)^server-port=.*$", "server-port=" + str(java_port), props)
         (root / "server.properties").write_text(props)
+        _configure_bedrock_properties(root / "server.properties", java_port)
         (root / "run.sh").write_text("#!/bin/sh\ncd \"$(dirname \"$0\")\"\nLD_LIBRARY_PATH=. exec ./bedrock_server\n")
     else:
         artifact = _vanilla(version) if software == "vanilla" else _paper(version)
@@ -408,7 +422,7 @@ def _write_server_runtime(root, edition, software, version, java_port, bedrock_p
         if not (root / "server.properties").exists():
             props = (Path(__file__).parent / "templates" / "java-server.properties").read_text()
             (root / "server.properties").write_text(props)
-        _set_property_file(root / "server.properties", "server-port", str(java_port))
+        _configure_java_properties(root / "server.properties", java_port)
         (root / "eula.txt").write_text("eula=true\n")
         (root / "run.sh").write_text("#!/bin/sh\ncd \"$(dirname \"$0\")\"\nexec /usr/bin/java -Xms256M -Xmx1G -jar server.jar nogui\n")
     (root / "run.sh").chmod(0o750)
@@ -423,8 +437,48 @@ def _write_server_runtime(root, edition, software, version, java_port, bedrock_p
         geyser.mkdir(exist_ok=True)
         config_path = geyser / "config.yml"
         config = config_path.read_text() if config_path.exists() else (Path(__file__).parent / "templates" / "crossplay-geyser.yml").read_text()
-        config = config.replace("port: 19132", "port: " + str(bedrock_port)).replace("port: 25565", "port: " + str(java_port))
         config_path.write_text(config)
+        _configure_geyser(config_path, bedrock_port, java_port)
+
+
+def _configure_java_properties(path, port):
+    """Keep Java/Paper listener and optional query listener aligned with the allocated TCP port."""
+    for key, value in (
+        ("server-ip", ""),
+        ("server-port", str(port)),
+        ("query.port", str(port)),
+        ("enable-query", "false"),
+        ("enable-rcon", "false"),
+    ):
+        _set_property_file(path, key, value)
+
+
+def _configure_geyser(path, bedrock_port, java_port):
+    """Configure Geyser's Bedrock listener and its local Paper/Floodgate backend."""
+    path = Path(path)
+    try:
+        config = yaml.safe_load(path.read_text()) if path.exists() else {}
+    except (OSError, yaml.YAMLError) as exc:
+        raise ManagerError("GM-238: Cannot read Geyser configuration: " + str(exc)[:200])
+    if not isinstance(config, dict):
+        raise ManagerError("GM-238: Geyser configuration must be a YAML mapping")
+    bedrock = config.setdefault("bedrock", {})
+    remote = config.setdefault("remote", {})
+    if not isinstance(bedrock, dict) or not isinstance(remote, dict):
+        raise ManagerError("GM-238: Geyser bedrock/remote configuration sections are invalid")
+    bedrock.update({"address": "0.0.0.0", "port": int(bedrock_port), "clone-remote-port": False, "transport": "nethernet"})
+    remote.update({"address": "127.0.0.1", "port": int(java_port), "auth-type": "floodgate"})
+    path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True))
+
+
+def _configure_bedrock_properties(path, port):
+    """Apply the documented BDS port settings and disable default-port LAN discovery."""
+    for key, value in (
+        ("server-port", port),
+        ("server-portv6", port),
+        ("enable-lan-visibility", "false"),
+    ):
+        _set_property_file(path, key, str(value))
 
 
 def _set_property_file(path, key, value):
@@ -511,27 +565,23 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
             else:
                 raise ManagerError("Unsupported edition transition.")
         # Preserve a stable TCP/UDP port allocation in the registry.
-        used_tcp = set()
-        used_udp = set()
         with store.connect() as db:
-            used_tcp = {r[0] for r in db.execute("SELECT java_port FROM servers WHERE id<>? AND java_port IS NOT NULL", (sid,))}
-            used_udp = {r[0] for r in db.execute("SELECT bedrock_port FROM servers WHERE id<>? AND bedrock_port IS NOT NULL", (sid,))}
+            used_ports = {r[0] for r in db.execute(
+                "SELECT java_port FROM servers WHERE id<>? AND java_port IS NOT NULL UNION "
+                "SELECT bedrock_port FROM servers WHERE id<>? AND bedrock_port IS NOT NULL", (sid, sid))}
         if edition == "bedrock":
-            java_port = choose_port(19132, "udp", used_udp | used_tcp)
+            java_port = choose_port(19132, "udp", used_ports)
             bedrock_port = None
         else:
-            java_port = choose_port(25565, "tcp", used_tcp)
-            bedrock_port = choose_port(19132, "udp", used_udp) if edition == "crossplay" else None
+            java_port = choose_port(25565, "tcp", used_ports)
+            bedrock_port = choose_port(19132, "tcp+udp", used_ports | {java_port}) if edition == "crossplay" else None
         if edition != "bedrock":
-            _set_property_file(stage / "server.properties", "server-port", str(java_port))
+            _configure_java_properties(stage / "server.properties", java_port)
         else:
-            _set_property_file(stage / "server.properties", "server-port", str(java_port))
+            _configure_bedrock_properties(stage / "server.properties", java_port)
         if edition == "crossplay":
             geyser_cfg = stage / "plugins" / "Geyser-Spigot" / "config.yml"
-            if geyser_cfg.exists():
-                text = geyser_cfg.read_text()
-                text = text.replace("port: 19132", "port: " + str(bedrock_port)).replace("port: 25565", "port: " + str(java_port))
-                geyser_cfg.write_text(text)
+            _configure_geyser(geyser_cfg, bedrock_port, java_port)
         # Validate the complete target runtime before touching the live directory.
         required = ["server.properties", "run.sh"]
         required.append("bedrock_server" if edition == "bedrock" else "server.jar")

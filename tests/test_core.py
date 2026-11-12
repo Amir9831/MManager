@@ -1,9 +1,12 @@
 import pytest
+import yaml
 from pathlib import Path
 from mmanager import core,store,settings
 def setup(monkeypatch,tmp_path):
  monkeypatch.setattr(store,"DATA",tmp_path/"data");monkeypatch.setattr(store,"DB",tmp_path/"data"/"test.db")
  monkeypatch.setattr(settings,"SERVERS",tmp_path/"servers")
+ monkeypatch.setattr(settings,"ROOT",tmp_path/"root")
+ monkeypatch.setattr(settings,"BACKUPS",tmp_path/"backups")
  monkeypatch.setattr(core,"_vanilla",lambda v:{"url":"https://invalid.test/server.jar","checksum":None,"algorithm":"sha1"})
  monkeypatch.setattr(core,"_paper",lambda v:{"url":"https://invalid.test/paper.jar","checksum":None,"algorithm":"sha256"})
  monkeypatch.setattr(core,"_download",lambda u,d,*a:Path(d).write_bytes(b"x"*2048))
@@ -11,16 +14,31 @@ def setup(monkeypatch,tmp_path):
 def test_create_and_eula(monkeypatch,tmp_path):
  setup(monkeypatch,tmp_path);x=core.create_server("survival","java","1.21.4","vanilla",True)
  assert store.get_server(x["id"])["java_port"]==25565
+ props=(tmp_path/"servers"/"survival"/"server.properties").read_text()
+ assert "server-port=25565" in props
+ assert "query.port=25565" in props
+ assert "server-ip=" in props
+ assert "enable-query=false" in props
+ assert "enable-rcon=false" in props
  assert (tmp_path/"servers"/"survival"/"eula.txt").read_text()=="eula=true\n"
 def test_eula_required(monkeypatch,tmp_path):
  setup(monkeypatch,tmp_path)
  with pytest.raises(core.ManagerError,match="GM-106"):core.create_server("survival","java","1.21.4")
 def test_invalid_name():
  with pytest.raises(core.ManagerError,match="GM-101"):core.create_server("../x","java","1.21.4","vanilla",True)
-def test_crossplay_allocates_udp_and_config(monkeypatch,tmp_path):
+def test_crossplay_allocates_tcp_udp_and_config(monkeypatch,tmp_path):
  setup(monkeypatch,tmp_path);x=core.create_server("cross","crossplay","1.21.4","paper",True)
  assert x["bedrock_port"]==19132
- assert "port: 19132" in (tmp_path/"servers"/"cross"/"plugins"/"Geyser-Spigot"/"config.yml").read_text()
+ assert x["bedrock_port"] != x["java_port"]
+ props=(tmp_path/"servers"/"cross"/"server.properties").read_text()
+ assert "server-port=25565" in props and "query.port=25565" in props
+ geyser=yaml.safe_load((tmp_path/"servers"/"cross"/"plugins"/"Geyser-Spigot"/"config.yml").read_text())
+ assert geyser["bedrock"]["address"]=="0.0.0.0"
+ assert geyser["bedrock"]["port"]==x["bedrock_port"]
+ assert geyser["bedrock"]["transport"]=="nethernet"
+ assert geyser["remote"]["address"]=="127.0.0.1"
+ assert geyser["remote"]["port"]==x["java_port"]
+ assert geyser["remote"]["auth-type"]=="floodgate"
 
 def test_bedrock_release_catalog(monkeypatch):
     from mmanager import core
@@ -56,7 +74,10 @@ def test_bedrock_install_uses_verified_zip(monkeypatch,tmp_path):
     assert item["java_port"]==19132
     assert (root/"bedrock_server").exists()
     assert "LD_LIBRARY_PATH" in (root/"run.sh").read_text()
-    assert "server-port=19132" in (root/"server.properties").read_text()
+    properties=(root/"server.properties").read_text()
+    assert "server-port=19132" in properties
+    assert "server-portv6=19132" in properties
+    assert "enable-lan-visibility=false" in properties
 
 
 def test_server_logs_read_rotated_file_tail_without_subprocess(monkeypatch, tmp_path):
@@ -199,3 +220,76 @@ def test_other_downloads_keep_mmanager_user_agent(monkeypatch, tmp_path):
     monkeypatch.setattr(core.urllib.request, "urlopen", fake_urlopen)
     core._download("https://example.com/server.jar", tmp_path / "server.jar")
     assert seen == ["MManager/0.2 (https://github.com/Amir9831/MManager)"]
+
+def test_java_update_reapplies_allocated_listener_ports(monkeypatch, tmp_path):
+    setup(monkeypatch, tmp_path)
+    item = core.create_server("updatejava", "java", "1.21.4", "vanilla", True)
+    root = Path(item["directory"])
+    (root / "server.properties").write_text(
+        "server-port=7551\nquery.port=7551\nserver-ip=127.0.0.1\n"
+        "enable-query=true\nenable-rcon=true\nmotd=Keep me\n"
+    )
+    monkeypatch.setattr(core, "_active", lambda item: False)
+    monkeypatch.setattr(core, "create_backup", lambda sid: {"id": "backup-java", "filename": "backup.tar.gz"})
+    core.update_server(item["id"], "1.21.5")
+    props = core.server_settings(item["id"])["settings"]
+    assert props["server-port"] == str(item["java_port"])
+    assert props["query.port"] == str(item["java_port"])
+    assert props["server-ip"] == ""
+    assert props["enable-query"] == "false"
+    assert props["enable-rcon"] == "false"
+    assert props["motd"] == "Keep me"
+
+
+def test_bedrock_update_reapplies_allocated_udp_ports(monkeypatch, tmp_path):
+    import zipfile
+    setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(core, "_bedrock", lambda v: {
+        "url": "https://invalid.test/bds.zip", "checksum": None, "algorithm": "sha256"
+    })
+
+    def fake_bedrock_download(url, dest, *args):
+        with zipfile.ZipFile(dest, "w") as archive:
+            archive.writestr("bedrock_server", b"fake updated executable")
+        return Path(dest).stat().st_size
+
+    monkeypatch.setattr(core, "_download", fake_bedrock_download)
+    item = core.create_server("updatebedrock", "bedrock", "1.26.62", "bedrock", True)
+    root = Path(item["directory"])
+    (root / "server.properties").write_text(
+        "server-port=7551\nserver-portv6=7552\nenable-lan-visibility=true\n"
+        "server-name=Keep me\n"
+    )
+    monkeypatch.setattr(core, "_active", lambda item: False)
+    monkeypatch.setattr(core, "create_backup", lambda sid: {"id": "backup-bedrock", "filename": "backup.tar.gz"})
+    core.update_server(item["id"], "1.26.63")
+    props = core.server_settings(item["id"])["settings"]
+    assert props["server-port"] == str(item["java_port"])
+    assert props["server-portv6"] == str(item["java_port"])
+    assert props["enable-lan-visibility"] == "false"
+    assert props["server-name"] == "Keep me"
+
+
+def test_crossplay_update_reapplies_java_and_geyser_ports(monkeypatch, tmp_path):
+    setup(monkeypatch, tmp_path)
+    item = core.create_server("updatecross", "crossplay", "1.21.4", "paper", True)
+    root = Path(item["directory"])
+    (root / "server.properties").write_text("server-port=7551\nquery.port=7551\n")
+    geyser_path = root / "plugins" / "Geyser-Spigot" / "config.yml"
+    geyser_path.write_text(
+        "bedrock:\n  address: 127.0.0.1\n  port: 7551\n"
+        "remote:\n  address: localhost\n  port: 7552\n"
+        "  auth-type: floodgate\n"
+    )
+    monkeypatch.setattr(core, "_active", lambda item: False)
+    monkeypatch.setattr(core, "create_backup", lambda sid: {"id": "backup-cross", "filename": "backup.tar.gz"})
+    core.update_server(item["id"], "1.21.4")
+    props = core.server_settings(item["id"])["settings"]
+    assert props["server-port"] == str(item["java_port"])
+    assert props["query.port"] == str(item["java_port"])
+    geyser = yaml.safe_load(geyser_path.read_text())
+    assert geyser["bedrock"]["address"] == "0.0.0.0"
+    assert geyser["bedrock"]["port"] == item["bedrock_port"]
+    assert geyser["remote"]["address"] == "127.0.0.1"
+    assert geyser["remote"]["port"] == item["java_port"]
+    assert geyser["remote"]["auth-type"] == "floodgate"

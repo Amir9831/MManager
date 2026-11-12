@@ -36,7 +36,7 @@ Admin credentials: `/root/mmanager-admin-credentials.txt` (mode 0600). On a fres
 
 ## Explicit limitations
 
-- Automated game-port firewall configuration is not implemented. Open Java ports as TCP and Bedrock ports as UDP in UFW and the provider firewall.
+- Automated game-port firewall configuration is not implemented. Open Java Edition ports as TCP, Bedrock Dedicated Server ports as UDP, and Cross-play Geyser ports as both TCP and UDP in UFW and the provider firewall.
 - RCON is unencrypted and may listen on all interfaces; restrict its inbound TCP port yourself before enabling it. Bedrock uses the local server stdin channel instead of RCON.
 - Plugin management is supported only on Paper-based servers (Paper and Cross-play), not Vanilla or Bedrock.
 - Minecraft mods are not plugins. Fabric/Forge mod-loader installation is not yet implemented; the panel explains this instead of allowing incompatible mod JAR uploads.
