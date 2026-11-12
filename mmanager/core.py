@@ -107,13 +107,15 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
  try:
   with store.connect() as db:
    db.execute("BEGIN IMMEDIATE")
-   used_ports={r[0] for r in db.execute("SELECT java_port FROM servers WHERE java_port IS NOT NULL UNION SELECT bedrock_port FROM servers WHERE bedrock_port IS NOT NULL")}
+   used_tcp={r[0] for r in db.execute("SELECT java_port FROM servers WHERE edition!='bedrock' AND java_port IS NOT NULL")}
+   used_udp={r[0] for r in db.execute("SELECT bedrock_port FROM servers WHERE bedrock_port IS NOT NULL")}
+   used_udp.update(r[0] for r in db.execute("SELECT java_port FROM servers WHERE edition='bedrock' AND java_port IS NOT NULL"))
    if edition=="bedrock":
-    item["java_port"]=choose_port(19132,"udp",used_ports)
+    item["java_port"]=choose_port(19132,"udp",used_udp)
    else:
-    item["java_port"]=choose_port(25565,"tcp",used_ports)
+    item["java_port"]=choose_port(25565,"tcp",used_tcp)
    if edition=="crossplay":
-    item["bedrock_port"]=choose_port(19132,"tcp+udp",used_ports | {item["java_port"]})
+    item["bedrock_port"]=choose_port(19132,"udp",used_udp)
    db.execute("INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory,eula_accepted) VALUES(:id,:name,:edition,:software,:version,:java_port,:bedrock_port,:directory,:eula_accepted)",item);db.commit()
   artifact=_bedrock(version) if edition=="bedrock" else (_vanilla(version) if software=="vanilla" else _paper(version))
   archive=d/("bedrock.zip" if edition=="bedrock" else "server.jar")
@@ -566,15 +568,18 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
                 raise ManagerError("Unsupported edition transition.")
         # Preserve a stable TCP/UDP port allocation in the registry.
         with store.connect() as db:
-            used_ports = {r[0] for r in db.execute(
-                "SELECT java_port FROM servers WHERE id<>? AND java_port IS NOT NULL UNION "
-                "SELECT bedrock_port FROM servers WHERE id<>? AND bedrock_port IS NOT NULL", (sid, sid))}
+            used_tcp = {r[0] for r in db.execute(
+                "SELECT java_port FROM servers WHERE id<>? AND edition!='bedrock' AND java_port IS NOT NULL", (sid,))}
+            used_udp = {r[0] for r in db.execute(
+                "SELECT bedrock_port FROM servers WHERE id<>? AND bedrock_port IS NOT NULL", (sid,))}
+            used_udp.update(r[0] for r in db.execute(
+                "SELECT java_port FROM servers WHERE id<>? AND edition='bedrock' AND java_port IS NOT NULL", (sid,)))
         if edition == "bedrock":
-            java_port = choose_port(19132, "udp", used_ports)
+            java_port = choose_port(19132, "udp", used_udp)
             bedrock_port = None
         else:
-            java_port = choose_port(25565, "tcp", used_ports)
-            bedrock_port = choose_port(19132, "tcp+udp", used_ports | {java_port}) if edition == "crossplay" else None
+            java_port = choose_port(25565, "tcp", used_tcp)
+            bedrock_port = choose_port(19132, "udp", used_udp) if edition == "crossplay" else None
         if edition != "bedrock":
             _configure_java_properties(stage / "server.properties", java_port)
         else:
