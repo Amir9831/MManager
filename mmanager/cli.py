@@ -2,7 +2,7 @@ import os,shutil,subprocess,sys
 from getpass import getpass
 from argon2 import PasswordHasher
 from . import store,core,auth
-from .settings import AUTH_FILE
+from .settings import AUTH_FILE,TOKEN_FILE,CONFIG
 from .webconfig import ensure,save
 
 def ctl(a,u):
