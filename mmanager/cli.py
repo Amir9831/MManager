@@ -28,13 +28,15 @@ def web_menu():
    if not re.fullmatch(r"[A-Za-z0-9_-]{24,128}",new_path):
     print("Path must contain 24-128 URL-safe characters (letters, digits, _ or -).")
     continue
+   old_path=cfg["path"]
    cfg["path"]=new_path
    save(cfg)
    if ctl("restart","mmanager-web.service"):
     print("Panel path updated. The previous URL is now invalid.")
     print(f"New path: /{new_path}/")
    else:
-    print("Path saved, but web service restart failed. Check: journalctl -u mmanager-web")
+    cfg["path"]=old_path; save(cfg)
+    print("Path change was reverted because the web service could not restart. Check: journalctl -u mmanager-web")
   elif c=="2":
    p=getpass("New administrator password (min 12 chars): ")
    if len(p)<12: print("Password must be at least 12 characters."); continue
