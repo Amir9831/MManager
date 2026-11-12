@@ -1,4 +1,4 @@
-import json,re,secrets,shutil,subprocess,tarfile,urllib.request,uuid,os
+import json,re,secrets,shutil,subprocess,tarfile,urllib.request,uuid,os,zipfile
 from pathlib import Path
 from . import store,settings
 from .ports import choose_port
@@ -30,6 +30,53 @@ def _vanilla(version):
  server=_json(v["url"]).get("downloads",{}).get("server")
  if not server or not server.get("url"):raise ManagerError("GM-213: No server jar for this version")
  return {"url":server["url"],"checksum":server.get("sha1"),"algorithm":"sha1"}
+
+def _bedrock(version):
+ links=_json("https://net-secondary.web.minecraft-services.net/api/v1.0/download/links").get("result",{}).get("links",[])
+ entry=next((x for x in links if x.get("downloadType")=="serverBedrockLinux"),None)
+ if not entry: raise ManagerError("GM-216: Official Bedrock Linux download unavailable")
+ url=entry.get("downloadUrl","")
+ match=re.search(r"bedrock-server-([0-9.]+)\\.zip$",url)
+ if not match or version not in {"latest",match.group(1)}: raise ManagerError("GM-216: Requested Bedrock version is not the current official release")
+ return {"url":url,"checksum":None,"algorithm":"sha256"}
+
+def available_versions(edition):
+ if edition not in {"java","bedrock","crossplay"}: raise ManagerError("GM-102: Invalid edition")
+ if edition=="bedrock":
+  artifact=_bedrock("latest")
+  version=re.search(r"bedrock-server-([0-9.]+)\\.zip$",artifact["url"]).group(1)
+  return {"latest":version,"versions":[{"id":version,"type":"release"}]}
+ manifest=_json("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
+ versions=[v for v in manifest.get("versions",[]) if v.get("type")=="release"]
+ if edition=="crossplay":
+  paper=_json("https://fill.papermc.io/v3/projects/paper")
+  supported={v for group in paper.get("versions",{}).values() for v in group}
+  versions=[v for v in versions if v["id"] in supported]
+ return {"latest":manifest.get("latest",{}).get("release"),"versions":[{"id":v["id"],"type":v["type"]} for v in versions]}
+
+def server_settings(sid):
+ item=store.get_server(sid)
+ if not item: raise ManagerError("GM-108: Server not found")
+ path=Path(item["directory"])/"server.properties"; values={}
+ if path.exists():
+  for line in path.read_text(errors="replace").splitlines():
+   if line and not line.lstrip().startswith("#") and "=" in line:
+    k,v=line.split("=",1); values[k.strip()]=v.strip()
+ return {"settings":values,"edition":item["edition"],"software":item["software"],"version":item["version"]}
+
+def update_server_settings(sid,changes):
+ item=store.get_server(sid)
+ if not item: raise ManagerError("GM-108: Server not found")
+ allowed={"motd","max-players","difficulty","gamemode","hardcore","pvp","online-mode","white-list","enforce-whitelist","view-distance","simulation-distance","spawn-protection","allow-flight","allow-nether","level-name","level-seed","level-type","server-port","server-ip","enable-command-block","enable-rcon","rcon.port","rcon.password","player-idle-timeout","rate-limit","max-world-size","broadcast-console-to-ops","broadcast-rcon-to-ops","force-gamemode","resource-pack","resource-pack-sha1","entity-broadcast-range-percentage","network-compression-threshold","op-permission-level","function-permission-level","allow-cheats","tick-distance","server-name","server-portv6","allow-list","default-player-permission-level","max-threads","enable-lan-visibility","enable-lan-broadcast","texturepack-required","content-log-file-enabled"}
+ for k,v in changes.items():
+  if k not in allowed or not re.fullmatch(r"[A-Za-z0-9_. -]{0,512}",str(v)): raise ManagerError("GM-240: Invalid or unsupported property: "+str(k))
+ path=Path(item["directory"])/"server.properties"; current=server_settings(sid)["settings"]
+ current.update({k:str(v) for k,v in changes.items()})
+ tmp=path.with_suffix(".properties.tmp")
+ tmp.write_text("# MManager server configuration\\n"+"".join(k+"="+v+"\\n" for k,v in sorted(current.items())))
+ tmp.replace(path)
+ return {"saved":True,"restart_required":True,"settings":current}
+
 def _paper(version):
  url=f"https://fill.papermc.io/v3/projects/paper/versions/{version}/builds"
  req=urllib.request.Request(url,headers={"User-Agent":"MManager/0.2 (https://github.com/Amir9831/MManager)"})
@@ -42,8 +89,8 @@ def _paper(version):
  return {"url":download["url"],"checksum":download.get("checksums",{}).get("sha256"),"algorithm":"sha256"}
 def create_server(name,edition="java",version="1.21.4",software="vanilla",accept_eula=False):
  if not NAME.fullmatch(name):raise ManagerError("GM-101: Invalid server name")
- if edition not in {"java","crossplay"}:raise ManagerError("GM-102: Bedrock-only is not supported in this release")
- if software not in {"vanilla","paper"} or (edition=="crossplay" and software!="paper"):raise ManagerError("GM-103: Crossplay requires Paper")
+ if edition not in {"java","bedrock","crossplay"}:raise ManagerError("GM-102: Invalid edition")
+ if software not in {"vanilla","paper","bedrock"} or (edition=="crossplay" and software!="paper") or (edition=="bedrock" and software!="bedrock") or (edition!="bedrock" and software=="bedrock"):raise ManagerError("GM-103: Invalid software for selected edition")
  if not re.fullmatch(r"[A-Za-z0-9._-]{1,40}",version):raise ManagerError("GM-105: Invalid Minecraft version")
  if accept_eula is not True:raise ManagerError("GM-106: Explicit EULA acceptance required")
  settings.SERVERS.mkdir(parents=True,exist_ok=True);d=settings.SERVERS/name;d.mkdir(mode=0o750,exist_ok=False)
