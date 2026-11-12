@@ -132,7 +132,8 @@ def switch_server(p:SwitchServer,_:bool=Depends(secured)):
  if not item:raise HTTPException(404,detail="No server is configured")
  try:return core.switch_server(item["id"],p.edition,p.software,p.version,p.confirm_world_reset)
  except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
-\n@app.get("/api/server/worlds")
+
+@app.get("/api/server/worlds")
 def worlds(_:bool=Depends(secured)):
  item=current_server()
  if not item:raise HTTPException(404,detail="No server is configured")
