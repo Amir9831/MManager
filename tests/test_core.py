@@ -353,3 +353,28 @@ def test_modern_bedrock_uses_tcp_namespace_and_nethernet(monkeypatch, tmp_path):
     assert props["server-port"] == "19133"
     assert props["transport"] == "nethernet"
     assert props["server-udp-ports"] == "49152-49200"
+
+
+def test_start_repairs_existing_bedrock_nethernet_properties(monkeypatch, tmp_path):
+    import zipfile
+    setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(core, "_bedrock", lambda v: {
+        "url": "https://invalid.test/bds.zip", "checksum": None, "algorithm": "sha256"
+    })
+    def fake_download(url, dest, *args):
+        with zipfile.ZipFile(dest, "w") as archive:
+            archive.writestr("bedrock_server", b"fake executable")
+        return Path(dest).stat().st_size
+    monkeypatch.setattr(core, "_download", fake_download)
+    item = core.create_server("migratebedrock", "bedrock", "1.26.63", "bedrock", True)
+    props_path = Path(item["directory"]) / "server.properties"
+    props_path.write_text("server-port=19132\nserver-portv6=19132\nenable-lan-visibility=false\n")
+    calls = []
+    monkeypatch.setattr(core, "_systemctl", lambda action, server: calls.append((action, server["name"])))
+    result = core.server_action(item["id"], "start")
+    props = core.server_settings(item["id"])["settings"]
+    assert result == {"ok": True, "action": "start"}
+    assert calls == [("start", "migratebedrock")]
+    assert props["transport"] == "nethernet"
+    assert props["server-udp-ports"] == "49152-49200"
+    assert props["server-port"] == "19132"
