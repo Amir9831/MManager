@@ -108,7 +108,7 @@ def telemetry(sid):
         cpu=max(0.0,100.0*os.cpu_count()*(ticks2-ticks1)/max(1,total2-total1))
         mem_total=int(re.search(r"MemTotal:\s+(\d+)",Path("/proc/meminfo").read_text()).group(1))*1024
         mem=rss_kb*1024
-        return {"status":"running","pid":pid,"cpu_percent":round(min(cpu,100.0),1),"memory_bytes":mem,"memory_percent":round(100*mem/max(1,mem_total),2)}
+        return {"status":"running","pid":pid,"cpu_percent":round(cpu,1),"memory_bytes":mem,"memory_percent":round(100*mem/max(1,mem_total),2)}
     except (OSError,AttributeError,ValueError,IndexError) as exc:
         raise ManagerError("Cannot read process telemetry: "+str(exc))
 
