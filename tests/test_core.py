@@ -247,7 +247,7 @@ def test_bedrock_status_detects_wrong_udp_port(monkeypatch, tmp_path):
 
     def fake_run(args, **kwargs):
         if args[0] == "/usr/bin/systemctl":
-            return type("PidResult", (), {"returncode": 0, "stdout": "8907\\n", "stderr": ""})()
+            return type("PidResult", (), {"returncode": 0, "stdout": "8907", "stderr": ""})()
         return Result()
 
     monkeypatch.setattr(core.subprocess, "run", fake_run)
