@@ -12,7 +12,11 @@ export DEBIAN_FRONTEND=noninteractive
 say "Installing system dependencies"
 apt-get update -y
 BDS_RUNTIME_PKGS=(libstdc++6 libatomic1)
-for candidate in libcurl4 libcurl4t64 libssl3 libssl3t64; do apt-cache show "$candidate" >/dev/null 2>&1 && BDS_RUNTIME_PKGS+=("$candidate"); done
+for pair in "libcurl4 libcurl4t64" "libssl3 libssl3t64"; do
+ for candidate in $pair; do
+  if apt-cache show "$candidate" >/dev/null 2>&1; then BDS_RUNTIME_PKGS+=("$candidate"); break; fi
+ done
+done
 if apt-cache show openjdk-21-jre-headless >/dev/null 2>&1; then
  apt-get install -y ca-certificates curl tar python3 python3-venv python3-pip openjdk-21-jre-headless sudo "${BDS_RUNTIME_PKGS[@]}"
 else
