@@ -195,9 +195,14 @@ def restore_backup(sid,bid,confirm=False):
  if not item:raise ManagerError("GM-108: Server not found")
  b=next((x for x in store.list_backups(sid) if x["id"]==bid),None)
  if not b:raise ManagerError("GM-231: Backup not found")
- _systemctl("stop",item);create_backup(sid)
- root=Path(item["directory"]).resolve();stage=root.parent/(root.name+".restore-"+secrets.token_hex(4));old=root.parent/(root.name+".old-"+secrets.token_hex(4));stage.mkdir()
+ was_active=_active(item)
+ root=Path(item["directory"]).resolve()
+ stage=root.parent/(root.name+".restore-"+secrets.token_hex(4))
+ old=root.parent/(root.name+".old-"+secrets.token_hex(4))
  try:
+  if was_active:_systemctl("stop",item)
+  create_backup(sid)
+  stage.mkdir()
   with tarfile.open(b["filename"],"r:gz") as tar:
    members=tar.getmembers()
    required=sum(m.size for m in members if m.isfile())
@@ -210,13 +215,13 @@ def restore_backup(sid,bid,confirm=False):
   except Exception:
    old.rename(root);raise
   shutil.rmtree(old,ignore_errors=True)
+  return {"restored":True,"restarted":was_active}
  except Exception:
   shutil.rmtree(stage,ignore_errors=True)
   if old.exists() and not root.exists():old.rename(root)
   raise
- return {"restored":True}
-
-
+ finally:
+  if was_active and root.exists():_systemctl("start",item)
 
 def update_server(sid, version):
     """Install a verified game-server release with a full pre-update backup."""
@@ -298,10 +303,8 @@ def rollback_server(sid):
     except (OSError,ValueError): raise ManagerError("Update rollback metadata is invalid.")
     backup_id=state.get("backup_id"); previous=state.get("previous_version")
     if not backup_id or not previous: raise ManagerError("Update rollback metadata is incomplete.")
-    was_active=_active(item)
     restore_backup(sid,backup_id,True)
     store.update_server_version(sid,previous)
-    if was_active: _systemctl("start",item)
     return {"rolled_back":True,"version":previous,"restored_backup":backup_id}
 
 def server_status(sid):
