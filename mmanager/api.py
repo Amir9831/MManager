@@ -24,6 +24,7 @@ class Moderation(BaseModel):
  player:str
  reason:str=""
 class PluginInstall(BaseModel): version_id:str
+class ServerUpdate(BaseModel): version:str
 def secured(authorization:str|None=Header(default=None)):
  token=authorization[7:] if authorization and authorization.startswith("Bearer ") else ""
  if not auth.verify_token(token): raise HTTPException(401,detail="Authentication required")
@@ -153,6 +154,20 @@ def delete_plugin(filename:str,_:bool=Depends(secured)):
  item=current_server()
  if not item:raise HTTPException(404,detail="No server is configured")
  try:return advanced.remove_plugin(item["id"],filename)
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+
+
+@app.post("/api/server/update")
+def update_server(p:ServerUpdate,_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return core.update_server(item["id"],p.version)
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+@app.post("/api/server/rollback")
+def rollback_server(_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return core.rollback_server(item["id"])
  except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
 
 app.mount("/",StaticFiles(directory=str(Path(__file__).parent/"web"),html=True),name="panel")
