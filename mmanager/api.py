@@ -82,7 +82,8 @@ def get_settings(_:bool=Depends(secured)):
 def put_settings(p:SettingsUpdate,_:bool=Depends(secured)):
  item=current_server()
  if not item:raise HTTPException(404,detail="No server is configured")
- try:\n  result=core.update_server_settings(item["id"],p.settings); result["settings"].pop("rcon.password",None); return result
+ try:
+  result=core.update_server_settings(item["id"],p.settings); result["settings"].pop("rcon.password",None); return result
  except core.ManagerError as e:raise HTTPException(400,detail=str(e))
 @app.post("/api/server/backups")
 def backup(_:bool=Depends(secured)):
