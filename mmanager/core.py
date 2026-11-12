@@ -1,4 +1,4 @@
-import json,re,secrets,shutil,subprocess,tarfile,urllib.request,uuid,os,zipfile,zipfile
+import json,re,secrets,shutil,subprocess,tarfile,urllib.request,uuid,os,zipfile
 from pathlib import Path
 from . import store,settings
 from .ports import choose_port
@@ -72,7 +72,7 @@ def update_server_settings(sid,changes):
  path=Path(item["directory"])/"server.properties"; current=server_settings(sid)["settings"]
  current.update({k:str(v) for k,v in changes.items()})
  tmp=path.with_suffix(".properties.tmp")
- tmp.write_text("# MManager server configuration\\n"+"".join(k+"="+v+"\\n" for k,v in sorted(current.items())))
+ tmp.write_text("# MManager server configuration\n"+"".join(k+"="+v+"\n" for k,v in sorted(current.items())))
  tmp.replace(path)
  return {"saved":True,"restart_required":True,"settings":current}
 
@@ -115,12 +115,12 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
    binary=d/"bedrock_server"
    if not binary.exists(): raise ManagerError("GM-217: Bedrock binary missing from official archive")
    binary.chmod(0o750)
-   (d/"server.properties").write_text("server-port=19132\\nserver-portv6=19133\\n")
-   (d/"run.sh").write_text("#!/bin/sh\\ncd /var/lib/mmanager/servers/"+name+"\\nexec ./bedrock_server\\n")
+   (d/"server.properties").write_text("server-port=19132\nserver-portv6=19133\n")
+   (d/"run.sh").write_text("#!/bin/sh\ncd /var/lib/mmanager/servers/"+name+"\nLD_LIBRARY_PATH=. exec ./bedrock_server\n")
   else:
-   (d/"eula.txt").write_text("eula=true\\n")
-   (d/"server.properties").write_text(f"server-port={item['java_port']}\\n")
-   (d/"run.sh").write_text("#!/bin/sh\\ncd /var/lib/mmanager/servers/"+name+"\\nexec /usr/bin/java -Xms256M -Xmx1G -jar server.jar nogui\\n")
+   (d/"eula.txt").write_text("eula=true\n")
+   (d/"server.properties").write_text(f"server-port={item['java_port']}\n")
+   (d/"run.sh").write_text("#!/bin/sh\ncd /var/lib/mmanager/servers/"+name+"\nexec /usr/bin/java -Xms256M -Xmx1G -jar server.jar nogui\n")
   (d/"run.sh").chmod(0o750)
   if edition=="crossplay":
    plugins=d/"plugins";plugins.mkdir()
