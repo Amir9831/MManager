@@ -10,7 +10,7 @@ curl -fsSL https://raw.githubusercontent.com/Amir9831/MManager/main/install.sh |
 
 Admin credentials: `/root/mmanager-admin-credentials.txt` (0600). After installation, the installer prints the public panel URL with its random path and port. Use `Mmanager` → **Web panel management** to change the path, administrator password, or port. The panel and its API share the same public port; the core API remains loopback-only.
 
-## Implemented
+## مستندات فارسی\n\nراهنمای فارسی نصب، دسترسی عمومی، مدیریت Path/رمز/پورت و نکات امنیتی: [docs/FA.md](docs/FA.md).\n\n## Implemented
 
 Interactive `Mmanager` CLI; Argon2id login and bearer auth; Java Vanilla and Paper downloads; Paper-based Geyser/Floodgate crossplay; SQLite registry with TCP/UDP port uniqueness; systemd server lifecycle running unprivileged; logs; compressed, server-pausing backups and guarded restore; responsive purple web dashboard.
 
