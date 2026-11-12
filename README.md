@@ -8,7 +8,7 @@ Minecraft server manager for Ubuntu 22.04 / 24.04 / 26.04.
 curl -fsSL https://raw.githubusercontent.com/Amir9831/MManager/main/install.sh | sudo bash
 ```
 
-Admin credentials: `/root/mmanager-admin-credentials.txt` (mode 0600). The installer prints the public panel URL with its random path and port. Use `sudo Mmanager` → **Web panel management** to change the path, administrator password, or port. The panel and browser API share one public TCP port; the core API remains loopback-only.
+Admin credentials: `/root/mmanager-admin-credentials.txt` (mode 0600). On a fresh install, the installer prints the newly generated administrator password once, after all health checks pass, together with the public panel URL. Upgrades preserve existing credentials and never print the existing password. Use `sudo Mmanager` → **Web panel management** to change the path, administrator password, or port. CLI option 9 removes MManager itself after an explicit confirmation; Minecraft worlds and backups under `/var/lib/mmanager` are preserved. The panel and browser API share one public TCP port; the core API remains loopback-only.
 
 ## مستندات فارسی
 
