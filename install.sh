@@ -4,7 +4,7 @@ umask 027
 REPO="Amir9831/MManager"
 CURRENT="/opt/mmanager/current"
 say(){ printf '\n[MManager] %s\n' "$*"; }
-fail(){ printf '\n[MManager][FATAL] %s\n' "$*" >&2; return 1; }
+fail(){ printf '\n[MManager][FATAL] %s\n' "$*" >&2; exit 1; }
 
 [[ $EUID -eq 0 ]] || fail "Run: curl -fsSL https://raw.githubusercontent.com/$REPO/main/install.sh | sudo bash"
 [[ -r /etc/os-release ]] || fail "Cannot detect OS"
@@ -28,7 +28,7 @@ for pair in "libcurl4 libcurl4t64" "libssl3 libssl3t64"; do
  done
 done
 if apt-cache show openjdk-21-jre-headless >/dev/null 2>&1; then
- apt-get install -y ca-certificates curl tar python3 python3-venv python3-pip openjdk-21-jre-headless sudo policykit-1 util-linux logrotate "${BDS_RUNTIME_PKGS[@]}"
+ apt-get install -y ca-certificates curl tar python3 python3-venv python3-pip openjdk-21-jre-headless sudo policykit-1 util-linux logrotate git "${BDS_RUNTIME_PKGS[@]}"
 else
  apt-get install -y ca-certificates curl tar wget gpg python3 python3-venv python3-pip sudo policykit-1 util-linux logrotate "${BDS_RUNTIME_PKGS[@]}"
  install -d -m 0755 /etc/apt/keyrings
@@ -71,7 +71,7 @@ on_error(){
   if [[ -n "$OLD" && -d "$OLD" ]]; then
    ln -sfn "$OLD" "$CURRENT.rollback" || true
    mv -Tf "$CURRENT.rollback" "$CURRENT" || true
-   usermod -aG systemd-journal mmanager 2>/dev/null || true
+   if [[ "$OLD_JOURNAL_MEMBER" == "1" ]]; then usermod -aG systemd-journal mmanager 2>/dev/null || true; else gpasswd -d mmanager systemd-journal >/dev/null 2>&1 || true; fi
   else
    rm -f "$CURRENT" "$CURRENT.rollback"
   fi
@@ -102,6 +102,8 @@ trap 'on_error "$?" "$LINENO"' ERR
 
 id mmanager >/dev/null 2>&1 || useradd --system --home-dir /var/lib/mmanager --create-home --shell /usr/sbin/nologin mmanager
 install -d -o root -g mmanager -m 0750 /etc/mmanager
+chown root:mmanager /etc/mmanager
+chmod 0750 /etc/mmanager
 install -d -o mmanager -g mmanager -m 0750 /var/lib/mmanager /var/lib/mmanager/servers /var/lib/mmanager/backups /var/log/mmanager /var/log/mmanager/servers
 chown -R mmanager:mmanager /var/lib/mmanager /var/log/mmanager
 find /var/lib/mmanager /var/log/mmanager -type d -exec chmod 0750 {} +
@@ -110,9 +112,13 @@ say "Resolving the MManager source revision"
 curl --fail --location --retry 3 --connect-timeout 15 "https://api.github.com/repos/$REPO/commits/main" -o "$TMP/commit.json"
 COMMIT=$(python3 -c 'import json,re,sys; s=json.load(open(sys.argv[1])).get("sha",""); print(s if re.fullmatch(r"[0-9a-f]{40}",s) else "")' "$TMP/commit.json")
 [[ -n "$COMMIT" ]] || fail "GitHub did not return a valid commit SHA"
-curl --fail --location --retry 3 --connect-timeout 15 "https://github.com/$REPO/archive/$COMMIT.tar.gz" -o "$TMP/source.tar.gz"
+git init -q "$TMP/repo"
+git -C "$TMP/repo" remote add origin "https://github.com/$REPO.git"
+git -C "$TMP/repo" fetch --quiet --depth=1 origin "$COMMIT"
+FETCHED_COMMIT=$(git -C "$TMP/repo" rev-parse FETCH_HEAD)
+[[ "$FETCHED_COMMIT" == "$COMMIT" ]] || fail "Fetched Git commit does not match the requested SHA"
 mkdir "$TMP/src"
-tar -xzf "$TMP/source.tar.gz" --strip-components=1 -C "$TMP/src"
+git -C "$TMP/repo" archive "$COMMIT" | tar -x -C "$TMP/src"
 [[ -f "$TMP/src/pyproject.toml" && -f "$TMP/src/mmanager/api.py" && -f "$TMP/src/systemd/mmanager-core.service" ]] || fail "Archive integrity sanity check failed"
 
 install -d -o root -g root -m 0755 /opt/mmanager /opt/mmanager/releases
@@ -189,6 +195,8 @@ chmod 0640 /etc/mmanager/web.env
 OLD=""
 [[ -L "$CURRENT" ]] && OLD=$(readlink -f "$CURRENT" || true)
 [[ -z "$OLD" || -d "$OLD" ]] || fail "The current MManager release link is broken"
+OLD_JOURNAL_MEMBER=0
+id -nG mmanager 2>/dev/null | tr ' ' '\n' | grep -qx systemd-journal && OLD_JOURNAL_MEMBER=1 || true
 for path in /etc/systemd/system/mmanager-core.service /etc/systemd/system/mmanager-web.service /etc/systemd/system/mmanager-mc@.service /etc/polkit-1/rules.d/50-mmanager.rules /etc/sudoers.d/mmanager /etc/logrotate.d/mmanager; do
  snapshot_file "$path"
 done
@@ -246,7 +254,7 @@ CORE_OK=0
 WEB_OK=0
 for attempt in {1..30}; do
  if curl --fail --silent --max-time 2 http://127.0.0.1:8765/api/health >/dev/null; then CORE_OK=1; fi
- if curl --fail --silent --max-time 2 "http://127.0.0.1/$PANEL_PORT/$PANEL_PATH/api/health" >/dev/null; then WEB_OK=1; fi
+ if curl --fail --silent --max-time 2 "http://127.0.0.1:$PANEL_PORT/$PANEL_PATH/api/health" >/dev/null; then WEB_OK=1; fi
  [[ "$CORE_OK" == 1 && "$WEB_OK" == 1 ]] && break
  sleep 1
 done
