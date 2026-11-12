@@ -461,7 +461,6 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
             else:
                 new_values["motd"] = old_settings.get("motd", "A Minecraft Server")
             if new_values:
-                _set_property_file(stage / "server.properties", "_mmanager-placeholder", "")
                 for key, value in new_values.items():
                     _set_property_file(stage / "server.properties", key, value)
         else:
@@ -501,7 +500,7 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
                 text = geyser_cfg.read_text()
                 text = text.replace("port: 19132", "port: " + str(bedrock_port)).replace("port: 25565", "port: " + str(java_port))
                 geyser_cfg.write_text(text)
-        root.rename(archived if cross_edition else archived)
+        root.rename(archived)
         try:
             stage.rename(root)
         except Exception:
@@ -510,9 +509,10 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
         with store.connect() as db:
             db.execute("UPDATE servers SET edition=?,software=?,version=?,java_port=?,bedrock_port=? WHERE id=?",
                        (edition, software, version, java_port, bedrock_port, sid))
-        shutil.rmtree(archived, ignore_errors=True) if not cross_edition else None
         if was_active:
             _systemctl("start", store.get_server(sid))
+        if not cross_edition:
+            shutil.rmtree(archived, ignore_errors=True)
         return {"switched": True, "from": {"edition": item["edition"], "software": item["software"], "version": item["version"]},
                 "to": {"edition": edition, "software": software, "version": version}, "backup_id": backup["id"],
                 "world_archived": bool(cross_edition), "restarted": was_active}
