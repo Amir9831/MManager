@@ -294,7 +294,7 @@ def _read_json(path, default):
 def _bedrock_online(item):
     logs = _recent_server_logs(item)
     states = {}
-    pattern = re.compile(r"Player (connected|disconnected):\\s*(.+?),\\s*xuid:\\s*([0-9]+)", re.I)
+    pattern = re.compile(r"Player (connected|disconnected):\s*(.+?),\s*xuid:\s*([0-9]+)", re.I)
     for line in logs.splitlines():
         match = pattern.search(line)
         if not match:
