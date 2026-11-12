@@ -321,7 +321,35 @@ def test_tcp_and_udp_can_share_same_numeric_port(monkeypatch, tmp_path):
 
     monkeypatch.setattr(core, "_download", fake_download)
     java = core.create_server("java19132", "java", "1.21.4", "vanilla", True)
-    bedrock = core.create_server("bedrock19132", "bedrock", "1.26.63", "bedrock", True)
+    bedrock = core.create_server("bedrock19132", "bedrock", "1.26.50", "bedrock", True)
     assert java["java_port"] == bedrock["java_port"] == 19132
+    assert core._bedrock_port_protocol("1.26.50") == "udp"
     assert store.get_server(java["id"])["edition"] == "java"
     assert store.get_server(bedrock["id"])["edition"] == "bedrock"
+
+
+def test_modern_bedrock_uses_tcp_namespace_and_nethernet(monkeypatch, tmp_path):
+    import zipfile
+    setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(core, "_bedrock", lambda v: {
+        "url": "https://invalid.test/bds.zip", "checksum": None, "algorithm": "sha256"
+    })
+    def choose(preferred, protocol, reserved=None):
+        reserved = reserved or set()
+        if protocol == "tcp":
+            return 19132 if 19132 not in reserved else 19133
+        return 19132
+    monkeypatch.setattr(core, "choose_port", choose)
+    def fake_download(url, dest, *args):
+        with zipfile.ZipFile(dest, "w") as archive:
+            archive.writestr("bedrock_server", b"fake executable")
+        return Path(dest).stat().st_size
+    monkeypatch.setattr(core, "_download", fake_download)
+    java = core.create_server("java_tcp", "java", "1.21.4", "vanilla", True)
+    bedrock = core.create_server("bedrock_tcp", "bedrock", "1.26.63", "bedrock", True)
+    assert java["java_port"] == 19132
+    assert bedrock["java_port"] == 19133
+    props = core.server_settings(bedrock["id"])["settings"]
+    assert props["server-port"] == "19133"
+    assert props["transport"] == "nethernet"
+    assert props["server-udp-ports"] == "49152-49200"
