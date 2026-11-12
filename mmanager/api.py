@@ -1,5 +1,8 @@
 from fastapi import FastAPI,HTTPException,Depends,Header,Request
-from fastapi.middleware.cors import CORSMiddleware\nfrom fastapi.staticfiles import StaticFiles\nfrom pathlib import Path\nfrom .webconfig import load as load_web_config
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+from .webconfig import load as load_web_config
 from pydantic import BaseModel,Field
 from . import store,core,auth
 app=FastAPI(title="MManager API",version="0.2.0")
@@ -45,7 +48,9 @@ def restore(sid:str,bid:str,confirm:bool=False,_:bool=Depends(secured)):
  try: return core.restore_backup(sid,bid,confirm)
  except (core.ManagerError,OSError,ValueError) as e: raise HTTPException(400,detail=str(e))
 
-app.mount("/", StaticFiles(directory=str(Path(__file__).parent / "web"), html=True), name="panel")\n\nclass PathPrefixApp:
+app.mount("/", StaticFiles(directory=str(Path(__file__).parent / "web"), html=True), name="panel")
+
+class PathPrefixApp:
     """Expose the API and static panel only beneath the configured secret path."""
     def __init__(self, inner):
         self.inner = inner
@@ -59,7 +64,6 @@ app.mount("/", StaticFiles(directory=str(Path(__file__).parent / "web"), html=Tr
         if path == prefix:
             scope = dict(scope)
             scope["path"] = "/"
-            scope["root_path"] = scope.get("root_path", "") + prefix
         elif path.startswith(prefix + "/"):
             scope = dict(scope)
             scope["path"] = path[len(prefix):]
