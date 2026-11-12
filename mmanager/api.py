@@ -27,6 +27,10 @@ def servers(_:bool=Depends(secured)): return {"items":store.list_servers()}
 def create(p:CreateServer,_:bool=Depends(secured)):
  try: return core.create_server(p.name,p.edition,p.version,p.software,p.accept_eula)
  except (core.ManagerError,OSError,ValueError) as e: raise HTTPException(400,detail=str(e))
+@app.get("/api/servers/{sid}/status")
+def status(sid:str,_:bool=Depends(secured)):
+ try: return core.server_status(sid)
+ except core.ManagerError as e: raise HTTPException(404,detail=str(e))
 @app.post("/api/servers/{sid}/{action}")
 def action(sid:str,action:str,_:bool=Depends(secured)):
  try: return core.server_action(sid,action)
