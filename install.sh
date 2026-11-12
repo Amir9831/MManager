@@ -55,12 +55,12 @@ else say "Existing administrator credentials preserved"; fi
 # Generate persistent public-panel settings without overwriting existing values.
 if [[ ! -s /etc/mmanager/web.json ]]; then
  PANEL_PATH=$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')
- printf '{"path":"%s","port":8766}\\n' "$PANEL_PATH" >/etc/mmanager/web.json
+ printf '{"path":"%s","port":8766}\n' "$PANEL_PATH" >/etc/mmanager/web.json
  chmod 0640 /etc/mmanager/web.json
 fi
 chown root:mmanager /etc/mmanager/web.json; chmod 0640 /etc/mmanager/web.json
 PANEL_PORT=$(python3 -c 'import json;print(json.load(open("/etc/mmanager/web.json"))["port"])')
-printf 'UVICORN_PORT=%s\\n' "$PANEL_PORT" >/etc/mmanager/web.env
+printf 'UVICORN_PORT=%s\n' "$PANEL_PORT" >/etc/mmanager/web.env
 chown root:mmanager /etc/mmanager/web.env; chmod 0640 /etc/mmanager/web.env
 OLD=""; [[ -L /opt/mmanager/current ]] && OLD=$(readlink -f /opt/mmanager/current)
 ln -sfn "$RELEASE" /opt/mmanager/current.next; mv -Tf /opt/mmanager/current.next /opt/mmanager/current
@@ -79,6 +79,22 @@ if ! curl --fail --silent http://127.0.0.1:8765/api/health >/dev/null; then
  fail "Core health check failed. Inspect journalctl -u mmanager-core"
 fi
 say "Installation completed"
-echo "Panel: http://127.0.0.1:8766"; echo "Credentials: /root/mmanager-admin-credentials.txt"
-echo "Remote access: ssh -L 8766:127.0.0.1:8766 -L 8765:127.0.0.1:8765 USER@SERVER"
-echo "Panel/API bind to loopback only. Do not expose 8765/8766 publicly."
+PANEL_PATH=$(python3 -c 'import json;print(json.load(open("/etc/mmanager/web.json"))["path"])')
+PANEL_PORT=$(python3 -c 'import json;print(json.load(open("/etc/mmanager/web.json"))["port"])')
+PUBLIC_IP=$(curl -4fsS --connect-timeout 5 https://api.ipify.org || true)
+[[ -n "$PUBLIC_IP" ]] || PUBLIC_IP="<PUBLIC_IP>"
+PANEL_URL="http://$PUBLIC_IP:$PANEL_PORT/$PANEL_PATH/"
+if [[ -f /root/mmanager-admin-credentials.txt ]]; then
+ python3 - "$PANEL_URL" <<'PY'
+import pathlib,sys
+p=pathlib.Path("/root/mmanager-admin-credentials.txt")
+lines=[x for x in p.read_text().splitlines() if not x.startswith("Panel:") and not x.startswith("SSH:")]
+lines.append("Panel: "+sys.argv[1])
+p.write_text("\n".join(lines)+"\n")
+p.chmod(0o600)
+PY
+fi
+echo "Panel: $PANEL_URL"
+echo "Credentials: /root/mmanager-admin-credentials.txt"
+echo "Manage panel path, password and port from the Mmanager CLI (option 7)."
+echo "Allow TCP port $PANEL_PORT in your VPS/cloud firewall."
