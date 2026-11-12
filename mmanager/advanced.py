@@ -42,8 +42,7 @@ def _rcon(item, command):
         with socket.create_connection(("127.0.0.1",port),timeout=3) as s:
             s.settimeout(3)
             packet(s,11,3,password)
-            packet(s,12,2,command)
-            return packet(s,13,0,"")
+            return packet(s,12,2,command)
     except OSError as exc: raise ManagerError("RCON unavailable: "+str(exc))
 
 def configure_rcon(sid, enabled, password=None, port=25575):
@@ -117,6 +116,22 @@ def plugin_search(query):
     req=urllib.request.Request(url,headers={"User-Agent":"MManager/0.4 (https://github.com/Amir9831/MManager)"})
     with urllib.request.urlopen(req,timeout=20) as r: data=json.load(r)
     return {"results":[{"project_id":x["project_id"],"slug":x["slug"],"title":x["title"],"description":x.get("description","")[:240],"downloads":x.get("downloads",0)} for x in data.get("hits",[])]}
+
+
+def plugin_versions(project_id, game_version):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{5,64}",str(project_id)): raise ManagerError("Invalid Modrinth project ID.")
+    req=urllib.request.Request("https://api.modrinth.com/v2/project/"+project_id+"/version",headers={"User-Agent":"MManager/0.4"})
+    with urllib.request.urlopen(req,timeout=20) as r: versions=json.load(r)
+    result=[]
+    for v in versions:
+        loaders=v.get("loaders",[])
+        if not ({"paper","spigot","purpur"} & set(loaders)): continue
+        games=v.get("game_versions",[])
+        if game_version not in games: continue
+        file=next((x for x in v.get("files",[]) if x.get("primary") and x.get("filename","").endswith(".jar")),None)
+        if file: result.append({"version_id":v["id"],"version":v.get("version_number",""),"name":file["filename"],"date":v.get("date_published","")})
+        if len(result)>=10: break
+    return {"versions":result}
 
 def installed_plugins(sid):
     item=_server(sid)
