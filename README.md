@@ -30,7 +30,7 @@ Admin credentials: `/root/mmanager-admin-credentials.txt` (mode 0600). The insta
 ## Explicit limitations
 
 - Automated game-port firewall configuration is not implemented. Open Java ports as TCP and Bedrock ports as UDP in UFW and the provider firewall.
-- Standard Minecraft RCON and RCON-based player moderation are not available for Bedrock Dedicated Server.
+- Standard Minecraft RCON and RCON-based player moderation are not available for Bedrock Dedicated Server. RCON is unencrypted and may listen on all interfaces; restrict its inbound TCP port yourself before enabling it.
 - Plugin management is supported only on Paper-based servers (Paper and Cross-play), not Vanilla or Bedrock.
 - The panel should be exposed through HTTPS using a trusted reverse proxy for Internet-facing deployments. The random URL path is an additional layer, not a replacement for authentication.
 
