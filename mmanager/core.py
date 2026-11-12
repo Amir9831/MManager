@@ -142,3 +142,14 @@ def restore_backup(sid,bid,confirm=False):
   if old.exists() and not root.exists():old.rename(root)
   raise
  return {"restored":True}
+
+
+def server_status(sid):
+    item = store.get_server(sid)
+    if not item:
+        raise ManagerError("GM-108: Server not found")
+    try:
+        active = _active(item)
+    except ManagerError as exc:
+        return {"status": "unknown", "error": str(exc)}
+    return {"status": "running" if active else "stopped"}
