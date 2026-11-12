@@ -1,7 +1,8 @@
-from fastapi import FastAPI,HTTPException,Depends,Header,Request
+from fastapi import FastAPI,HTTPException,Depends,Header,Request,UploadFile,File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+import tarfile
 from .webconfig import load as load_web_config
 from pydantic import BaseModel,Field
 from . import store,core,auth,advanced
@@ -91,6 +92,15 @@ def backup(_:bool=Depends(secured)):
  if not item:raise HTTPException(404,detail="No server is configured")
  try:return core.create_backup(item["id"])
  except (core.ManagerError,OSError) as e:raise HTTPException(400,detail=str(e))
+@app.post("/api/server/backups/import")
+def import_backup(file:UploadFile=File(...),_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:
+  result=core.import_backup(item["id"],file.file,file.filename)
+  return result
+ except (core.ManagerError,OSError,ValueError,tarfile.TarError) as e:raise HTTPException(400,detail=str(e))
+
 @app.get("/api/server/backups")
 def backups(_:bool=Depends(secured)):
  item=current_server()
