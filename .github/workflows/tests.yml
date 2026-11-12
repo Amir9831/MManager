@@ -16,5 +16,19 @@ jobs:
    - run: pip install -r requirements.txt pytest httpx
    - run: pip install -e .
    - run: python -m compileall -q mmanager
+   - uses: actions/setup-node@v4
+     with:
+      node-version: '22'
+   - name: Validate web panel JavaScript
+     run: |
+      python - <<'PY'
+      from pathlib import Path
+      import re
+      html = Path('mmanager/web/index.html').read_text()
+      scripts = re.findall(r'<script>(.*?)</script>', html, re.S)
+      assert len(scripts) == 1, 'Expected exactly one inline panel script'
+      Path('/tmp/mmanager-panel.js').write_text(scripts[0])
+      PY
+      node --check /tmp/mmanager-panel.js
    - run: bash -n install.sh
    - run: pytest -q
