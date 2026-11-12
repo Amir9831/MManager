@@ -36,6 +36,7 @@ def web_menu():
     print(f"New path: /{new_path}/")
    else:
     cfg["path"]=old_path; save(cfg)
+    ctl("restart","mmanager-web.service")
     print("Path change was reverted because the web service could not restart. Check: journalctl -u mmanager-web")
   elif c=="2":
    p=getpass("New administrator password (min 12 chars): ")
