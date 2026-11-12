@@ -26,6 +26,8 @@ class Moderation(BaseModel):
  reason:str=""
  permission_level:int=4
  permission:str="operator"
+ permission_level:int=4
+ permission:str="operator"
 class PluginInstall(BaseModel): version_id:str
 class ServerUpdate(BaseModel): version:str
 class SwitchServer(BaseModel):
