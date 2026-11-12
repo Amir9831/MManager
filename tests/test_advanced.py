@@ -171,9 +171,9 @@ def test_java_online_players_use_file_backed_service_logs(monkeypatch, tmp_path)
     log_dir.mkdir()
     monkeypatch.setattr(advanced, "SERVER_LOG_DIR", log_dir)
     (log_dir / "java-test.log").write_text(
-        "[Server thread/INFO]: Alex joined the game\\n"
-        "[Server thread/INFO]: Steve joined the game\\n"
-        "[Server thread/INFO]: Alex left the game\\n"
+        "[Server thread/INFO]: Alex joined the game\n"
+        "[Server thread/INFO]: Steve joined the game\n"
+        "[Server thread/INFO]: Alex left the game\n"
     )
     assert advanced._java_online_from_logs({"name": "java-test"}) == [
         {"name": "Steve", "online": True}
@@ -185,9 +185,9 @@ def test_bedrock_online_players_use_file_backed_service_logs(monkeypatch, tmp_pa
     log_dir.mkdir()
     monkeypatch.setattr(advanced, "SERVER_LOG_DIR", log_dir)
     (log_dir / "bedrock-test.log").write_text(
-        "Player connected: Alex, xuid: 12345\\n"
-        "Player disconnected: Alex, xuid: 12345\\n"
-        "Player connected: Steve, xuid: 67890\\n"
+        "Player connected: Alex, xuid: 12345\n"
+        "Player disconnected: Alex, xuid: 12345\n"
+        "Player connected: Steve, xuid: 67890\n"
     )
     assert advanced._bedrock_online({"name": "bedrock-test"}) == [
         {"name": "Steve", "xuid": "67890", "online": True}
