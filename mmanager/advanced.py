@@ -220,37 +220,6 @@ def moderate(sid, action, player, reason="", permission_level=4, permission="ope
             return console(sid, 'kick "' + player + '"' + (" " + reason if reason else ""))
         raise ManagerError("Unsupported Bedrock player action.")
     if action == "op":
-            return console(sid, 'op "' + player + '"')
-        if action == "deop":
-            return console(sid, 'deop "' + player + '"')
-        if action == "kick":
-            return console(sid, 'kick "' + player + '"' + (" " + reason if reason else ""))
-        if action == "allowlist_add":
-            if core.server_settings(sid)["settings"].get("allow-list", "false").lower() != "true":
-                raise ManagerError("Enable allow-list=true first; otherwise allowlist removal cannot block access.")
-            return console(sid, 'allowlist add "' + player + '"')
-        if action == "allowlist_remove":
-            if core.server_settings(sid)["settings"].get("allow-list", "false").lower() != "true":
-                raise ManagerError("Enable allow-list=true first; otherwise allowlist removal cannot block access.")
-            return console(sid, 'allowlist remove "' + player + '"')
-        if permission not in {"operator", "member", "visitor"}:
-            raise ManagerError("Bedrock permission must be operator, member or visitor.")
-        allowlist = _read_json(Path(item["directory"]) / "allowlist.json", [])
-        history = _bedrock_online(item)
-        match = next((x for x in allowlist if isinstance(x, dict) and str(x.get("name", "")).lower() == player.lower()), None)
-        if not match:
-            match = next((x for x in history if x["name"].lower() == player.lower()), None)
-        xuid = str((match or {}).get("xuid", ""))
-        if not xuid:
-            raise ManagerError("Bedrock XUID not found. The player must join once or be added to allowlist first.")
-        path = Path(item["directory"]) / "permissions.json"
-        entries = _read_json(path, [])
-        entries = [x for x in entries if not (isinstance(x, dict) and str(x.get("xuid", "")) == xuid)]
-        if permission != "member":
-            entries.append({"permission": permission, "xuid": xuid})
-        path.write_text(json.dumps(entries, indent=2) + "\n")
-        return console(sid, "permission reload")
-    if action == "op":
         if not 1 <= int(permission_level) <= 4:
             raise ManagerError("Java operator level must be between 1 and 4.")
         response = _rcon(item, "op " + player)
