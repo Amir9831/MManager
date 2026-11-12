@@ -1,11 +1,11 @@
-from fastapi import FastAPI,HTTPException,Depends,Header,Request,UploadFile,File
+from fastapi import FastAPI,HTTPException,Depends,Header,Request,UploadFile,File,Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 import tarfile
 from .webconfig import load as load_web_config
 from pydantic import BaseModel,Field
-from . import store,core,auth,advanced
+from . import store,core,auth,advanced,content
 app=FastAPI(title="MManager API",version="0.4.0")
 app.add_middleware(CORSMiddleware,allow_origins=[],allow_credentials=False,allow_methods=["GET","POST","PUT","DELETE"],allow_headers=["Content-Type","Authorization"])
 class Login(BaseModel): password:str=Field(min_length=1,max_length=256)
@@ -26,6 +26,13 @@ class Moderation(BaseModel):
  reason:str=""
 class PluginInstall(BaseModel): version_id:str
 class ServerUpdate(BaseModel): version:str
+class WorldAction(BaseModel):
+ name:str=Field(min_length=1,max_length=48)
+class ResourcePackConfig(BaseModel):
+ url:str=""
+ sha1:str=""
+ required:bool=False
+
 def secured(authorization:str|None=Header(default=None)):
  token=authorization[7:] if authorization and authorization.startswith("Bearer ") else ""
  if not auth.verify_token(token): raise HTTPException(401,detail="Authentication required")
@@ -112,6 +119,49 @@ def restore(bid:str,confirm:bool=False,_:bool=Depends(secured)):
  item=current_server()
  if not item:raise HTTPException(404,detail="No server is configured")
  try:return core.restore_backup(item["id"],bid,confirm)
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+
+@app.get("/api/server/worlds")
+def worlds(_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return content.list_worlds(item["id"])
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+@app.post("/api/server/worlds/activate")
+def activate_world(p:WorldAction,_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return content.activate_world(item["id"],p.name)
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+@app.post("/api/server/worlds/upload")
+def upload_world(name:str=Form(...),file:UploadFile=File(...),_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return content.upload_world(item["id"],name,file.file,file.filename)
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+@app.get("/api/server/resource-packs")
+def resource_packs(_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return content.resource_pack_info(item["id"])
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+@app.put("/api/server/resource-packs")
+def configure_resource_pack(p:ResourcePackConfig,_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return content.configure_java_resource_pack(item["id"],p.url,p.sha1,p.required)
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+@app.post("/api/server/resource-packs/upload")
+def upload_resource_pack(required:bool=Form(False),file:UploadFile=File(...),_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return content.install_bedrock_resource_pack(item["id"],file.file,file.filename,required)
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+@app.delete("/api/server/resource-packs/{pack_id}")
+def delete_resource_pack(pack_id:str,_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return content.remove_bedrock_resource_pack(item["id"],pack_id)
  except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
 
 @app.get("/api/server/telemetry")
