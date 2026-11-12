@@ -223,7 +223,7 @@ def update_server(sid, version):
     item=store.get_server(sid)
     if not item: raise ManagerError("GM-108: Server not found")
     if not re.fullmatch(r"[A-Za-z0-9._-]{1,40}",str(version)): raise ManagerError("GM-105: Invalid Minecraft version")
-    if version==item["version"]: raise ManagerError("Requested version is already installed.")
+    if version==item["version"] and item["software"]!="paper": raise ManagerError("Requested version is already installed.")
     if item["edition"]=="bedrock": artifact=_bedrock(version)
     elif item["software"]=="vanilla": artifact=_vanilla(version)
     else: artifact=_paper(version)
