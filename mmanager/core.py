@@ -203,7 +203,7 @@ def import_backup(sid, fileobj, original_filename):
     total+=len(chunk)
     if total>8*1024**3:raise ManagerError("GM-235: Uploaded backup exceeds 8 GiB")
     out.write(chunk)
-  if total<100:raise ManagerError("GM-234: Backup archive is empty or invalid")
+  if total<32:raise ManagerError("GM-234: Backup archive is empty or invalid")
   with tarfile.open(dest,"r:gz") as tar:
    members=tar.getmembers()
    if not members:raise ManagerError("GM-234: Backup archive is empty")
@@ -213,7 +213,7 @@ def import_backup(sid, fileobj, original_filename):
    expanded=0
    for member in members:
     target=(Path("/safe-root")/member.name).resolve()
-    if not target.is_relative_to(Path("/safe-root")) or not (member.isfile() or member.isdir()):
+    if Path(member.name).is_absolute() or ".." in Path(member.name).parts or not target.is_relative_to(Path("/safe-root")) or not (member.isfile() or member.isdir()):
      raise ManagerError("GM-232: Unsafe backup archive member rejected")
     expanded+=member.size
     if expanded>16*1024**3:raise ManagerError("GM-235: Expanded backup exceeds 16 GiB")
