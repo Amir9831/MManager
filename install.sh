@@ -12,9 +12,9 @@ export DEBIAN_FRONTEND=noninteractive
 say "Installing system dependencies"
 apt-get update -y
 if apt-cache show openjdk-21-jre-headless >/dev/null 2>&1; then
- apt-get install -y ca-certificates curl tar python3 python3-venv python3-pip openjdk-21-jre-headless sudo
+ apt-get install -y ca-certificates curl tar python3 python3-venv python3-pip openjdk-21-jre-headless sudo libcurl4 libssl3 libstdc++6 libatomic1
 else
- apt-get install -y ca-certificates curl tar wget gpg python3 python3-venv python3-pip sudo
+ apt-get install -y ca-certificates curl tar wget gpg python3 python3-venv python3-pip sudo libcurl4 libssl3 libstdc++6 libatomic1
  install -d -m 0755 /etc/apt/keyrings
  wget -qO- https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg
  echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $VERSION_CODENAME main" >/etc/apt/sources.list.d/adoptium.list
