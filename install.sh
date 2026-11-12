@@ -215,7 +215,7 @@ cat >/etc/polkit-1/rules.d/50-mmanager.rules <<'POLKIT'
 polkit.addRule(function(action, subject) {
     if (subject.user == "mmanager" &&
         action.id == "org.freedesktop.systemd1.manage-units" &&
-        /^mmanager-mc@[A-Za-z0-9_-]+\.service$/.test(action.lookup("unit") || "") &&
+        /^mmanager-mc@[A-Za-z0-9][A-Za-z0-9_-]{1,31}\.service$/.test(action.lookup("unit") || "") &&
         ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0) {
         return polkit.Result.YES;
     }
