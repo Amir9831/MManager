@@ -143,7 +143,8 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
    for project,filename in (("geyser","Geyser-Spigot.jar"),("floodgate","floodgate-spigot.jar")):
     _download(f"https://download.geysermc.org/v2/projects/{project}/versions/latest/builds/latest/downloads/spigot",plugins/filename)
    geyser=plugins/"Geyser-Spigot";geyser.mkdir(exist_ok=True)
-   geyser_config=(Path(__file__).parent/"templates"/"crossplay-geyser.yml")
+   geyser_config=geyser/"config.yml"
+   shutil.copy2(Path(__file__).parent/"templates"/"crossplay-geyser.yml", geyser_config)
    _configure_geyser(geyser_config, item["bedrock_port"], item["java_port"])
   return item
  except Exception:
