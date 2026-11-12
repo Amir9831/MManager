@@ -98,31 +98,64 @@ def moderate(sid, action, player, reason=""):
          "pardon":"pardon "+player}[action]
     return {"action":action,"player":player,"response":_rcon(_server(sid),cmd)}
 
+def _proc_cpu_ticks(raw):
+    """Read utime+stime from /proc/<pid>/stat without being confused by spaces in comm."""
+    close = raw.rfind(")")
+    if close < 0:
+        raise ValueError("Malformed /proc stat")
+    fields = raw[close + 2:].split()  # starts at field 3 (state)
+    if len(fields) <= 12:
+        raise ValueError("Incomplete /proc stat")
+    return int(fields[11]) + int(fields[12])
+
+
 def telemetry(sid):
-    item=_server(sid)
-    unit="mmanager-mc@"+item["name"]+".service"
-    p=subprocess.run(["/usr/bin/systemctl","show",unit,"--property=MainPID","--value"],capture_output=True,text=True,timeout=5)
-    if p.returncode: raise ManagerError("Cannot read server process information.")
-    try: pid=int(p.stdout.strip())
-    except ValueError: pid=0
-    if pid<=0: return {"status":"stopped","cpu_percent":0,"memory_bytes":0,"memory_percent":0}
-    proc=Path("/proc")/str(pid)
+    item = _server(sid)
+    unit = "mmanager-mc@" + item["name"] + ".service"
+    cmd = ["/usr/bin/systemctl", "show", unit, "--property=MainPID", "--value"]
+    if os.geteuid() != 0:
+        cmd = ["/usr/bin/sudo", "-n", *cmd]
     try:
-        status=(proc/"status").read_text()
-        rss_kb=int(re.search(r"VmRSS:\s+(\d+)\s+kB",status).group(1))
-        stat1=(proc/"stat").read_text().split()
-        total1=sum(int(x) for x in Path("/proc/stat").read_text().splitlines()[0].split()[1:])
-        ticks1=int(stat1[13])+int(stat1[14])
-        time.sleep(.35)
-        stat2=(proc/"stat").read_text().split()
-        total2=sum(int(x) for x in Path("/proc/stat").read_text().splitlines()[0].split()[1:])
-        ticks2=int(stat2[13])+int(stat2[14])
-        cpu=max(0.0,100.0*(os.cpu_count() or 1)*(ticks2-ticks1)/max(1,total2-total1))
-        mem_total=int(re.search(r"MemTotal:\s+(\d+)",Path("/proc/meminfo").read_text()).group(1))*1024
-        mem=rss_kb*1024
-        return {"status":"running","pid":pid,"cpu_percent":round(cpu,1),"memory_bytes":mem,"memory_percent":round(100*mem/max(1,mem_total),2)}
-    except (OSError,AttributeError,ValueError,IndexError) as exc:
-        raise ManagerError("Cannot read process telemetry: "+str(exc))
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ManagerError("Cannot read server process information: " + str(exc))
+    if p.returncode:
+        raise ManagerError("Cannot read server process information: " + (p.stderr.strip() or p.stdout.strip())[:250])
+    try:
+        pid = int(p.stdout.strip())
+    except ValueError:
+        pid = 0
+    if pid <= 0:
+        return {"status": "stopped", "cpu_percent": 0.0, "memory_bytes": 0, "memory_percent": 0.0, "pid": None}
+    proc = Path("/proc") / str(pid)
+    try:
+        stat1 = _proc_cpu_ticks((proc / "stat").read_text())
+        total1 = sum(int(x) for x in Path("/proc/stat").read_text().splitlines()[0].split()[1:])
+        time.sleep(0.30)
+        stat2 = _proc_cpu_ticks((proc / "stat").read_text())
+        total2 = sum(int(x) for x in Path("/proc/stat").read_text().splitlines()[0].split()[1:])
+        status = (proc / "status").read_text()
+        rss_match = re.search(r"VmRSS:\\s+(\\d+)\\s+kB", status)
+        if not rss_match:
+            raise ValueError("VmRSS is unavailable")
+        memory = int(rss_match.group(1)) * 1024
+        mem_total_match = re.search(r"MemTotal:\\s+(\\d+)", Path("/proc/meminfo").read_text())
+        if not mem_total_match:
+            raise ValueError("MemTotal is unavailable")
+        mem_total = int(mem_total_match.group(1)) * 1024
+        cpu_count = os.cpu_count() or 1
+        cpu = 100.0 * cpu_count * max(0, stat2 - stat1) / max(1, total2 - total1)
+        return {
+            "status": "running",
+            "pid": pid,
+            "cpu_percent": round(min(cpu, 100.0 * cpu_count), 1),
+            "memory_bytes": memory,
+            "memory_percent": round(100.0 * memory / max(1, mem_total), 2),
+        }
+    except FileNotFoundError:
+        return {"status": "stopped", "cpu_percent": 0.0, "memory_bytes": 0, "memory_percent": 0.0, "pid": None}
+    except (OSError, AttributeError, ValueError, IndexError) as exc:
+        raise ManagerError("Cannot read process telemetry: " + str(exc))
 
 def plugin_search(query):
     query=str(query).strip()[:100]
