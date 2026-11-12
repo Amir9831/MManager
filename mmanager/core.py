@@ -4,6 +4,7 @@ from pathlib import Path
 from . import store,settings
 from .ports import choose_port
 NAME=re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{1,31}$")
+SERVER_LOG_DIR=Path(os.environ.get("MMANAGER_LOG_DIR","/var/log/mmanager/servers"))
 class ManagerError(Exception):pass
 def _json(url):
  req=urllib.request.Request(url,headers={"User-Agent":"MManager/0.2"})
@@ -11,7 +12,8 @@ def _json(url):
 def _download(url,dest,expected=None,algorithm="sha256"):
  tmp=Path(str(dest)+".part");total=0;digest=__import__("hashlib").new(algorithm)
  try:
-  req=urllib.request.Request(url,headers={"User-Agent":"MManager/0.2 (https://github.com/Amir9831/MManager)"})
+  ua="Mozilla/5.0" if "minecraft.net/" in url else "MManager/0.2 (https://github.com/Amir9831/MManager)"
+  req=urllib.request.Request(url,headers={"User-Agent":ua})
   with urllib.request.urlopen(req,timeout=60) as r,tmp.open("wb") as out:
    while True:
     chunk=r.read(1024*1024)
@@ -169,7 +171,7 @@ def server_logs(sid,lines=100):
  item=store.get_server(sid)
  if not item:raise ManagerError("GM-108: Server not found")
  if not 1<=lines<=500:raise ManagerError("GM-110: Invalid line count")
- log_path=Path("/var/log/mmanager/servers")/(item["name"]+".log")
+ log_path=SERVER_LOG_DIR/(item["name"]+".log")
  tail=deque(maxlen=lines)
  try:
   with log_path.open("r",errors="replace") as stream:
