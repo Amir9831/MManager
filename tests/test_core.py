@@ -115,7 +115,9 @@ def test_switch_java_to_crossplay_preserves_world_and_updates_registry(monkeypat
         if edition=="crossplay":
             plugin=stage/"plugins"/"Geyser-Spigot"
             plugin.mkdir(parents=True,exist_ok=True)
-            (plugin/"config.yml").write_text("port: "+str(bedrock_port)+"\n")
+            (plugin/"config.yml").write_text("bedrock:\\n  port: "+str(bedrock_port)+"\\nremote:\\n  port: "+str(java_port)+"\\n")
+            (stage/"plugins"/"Geyser-Spigot.jar").write_bytes(b"geyser")
+            (stage/"plugins"/"floodgate-spigot.jar").write_bytes(b"floodgate")
         (stage/"server.properties").write_text("server-port="+str(java_port)+"\n")
         (stage/"run.sh").write_text("#!/bin/sh\n")
     monkeypatch.setattr(core,"_write_server_runtime",runtime)
