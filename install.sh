@@ -49,6 +49,7 @@ TMP=$(mktemp -d)
 RELEASE=""
 APP=""
 OLD=""
+API_TMP=""
 ROLLBACK_ACTIVE=0
 SNAPSHOT="$TMP/snapshot"
 ABSENT="$TMP/absent.list"
@@ -97,6 +98,7 @@ on_error(){
  exit "$rc"
 }
 cleanup(){
+ [[ -z "$API_TMP" ]] || rm -f "$API_TMP"
  if [[ -n "$RELEASE" && -d "$RELEASE" ]]; then
   local active
   active=$(readlink -f "$CURRENT" 2>/dev/null || true)
@@ -173,6 +175,7 @@ if [[ ! -s /etc/mmanager/api.token ]]; then
  chown root:mmanager "$API_TMP"
  chmod 0640 "$API_TMP"
  mv -f "$API_TMP" /etc/mmanager/api.token
+ API_TMP=""
 fi
 chown root:mmanager /etc/mmanager/auth.json /etc/mmanager/api.token
 chmod 0640 /etc/mmanager/auth.json /etc/mmanager/api.token
