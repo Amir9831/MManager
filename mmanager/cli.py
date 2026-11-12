@@ -60,7 +60,7 @@ def web_menu():
 
 
 def update_manager():
- print("\\nChecking for MManager updates...")
+ print("\nChecking for MManager updates...")
  if os.geteuid()!=0:
   print("Run the CLI with sudo to update MManager."); return
  import urllib.request
@@ -75,7 +75,7 @@ def update_manager():
 
 def main():
  while True:
-  print("\nMManager\n1 Servers\n2 Restart Core\n3 Restart Web\n4 Start services\n5 Stop services\n6 Diagnostics\n7 Web panel management\n0 Exit")
+  print("\nMManager\n1 Server management\n2 Restart Core\n3 Restart Web\n4 Start services\n5 Stop services\n6 Diagnostics\n7 Web panel management\n8 Update MManager\n0 Exit")
   c=input("> ").strip()
   if c=="0": return
   if c=="1":
