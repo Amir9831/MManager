@@ -23,7 +23,10 @@ fi
 id mmanager >/dev/null 2>&1 || useradd --system --home-dir /var/lib/mmanager --create-home --shell /usr/sbin/nologin mmanager
 install -d -o root -g mmanager -m 0750 /etc/mmanager
 install -d -o mmanager -g mmanager -m 0750 /var/lib/mmanager/servers /var/lib/mmanager/backups /var/log/mmanager
-install -d -o root -g root -m 0755 /opt/mmanager/releases
+# install -d does not change permissions on an existing directory; repair both ancestors on upgrades.
+install -d -o root -g root -m 0755 /opt/mmanager /opt/mmanager/releases
+chown root:root /opt/mmanager /opt/mmanager/releases
+chmod 0755 /opt/mmanager /opt/mmanager/releases
 TMP=$(mktemp -d); cleanup(){ rm -rf "$TMP"; }; trap cleanup EXIT
 say "Downloading MManager from GitHub"
 curl --fail --location --retry 3 --connect-timeout 15 "$URL" -o "$TMP/source.tar.gz"
@@ -72,8 +75,13 @@ chmod 0440 /etc/sudoers.d/mmanager; visudo -cf /etc/sudoers.d/mmanager >/dev/nul
 for unit in mmanager-core.service mmanager-web.service mmanager-mc@.service; do install -o root -g root -m 0644 "/opt/mmanager/current/systemd/$unit" "/etc/systemd/system/$unit"; done
 chown -R mmanager:mmanager /var/lib/mmanager /var/log/mmanager
 systemctl daemon-reload; systemctl enable mmanager-core.service mmanager-web.service
-systemctl restart mmanager-core.service mmanager-web.service; sleep 2
-if ! curl --fail --silent http://127.0.0.1:8765/api/health >/dev/null; then
+systemctl restart mmanager-core.service mmanager-web.service
+HEALTH_OK=0
+for attempt in {1..30}; do
+ if curl --fail --silent --max-time 2 http://127.0.0.1:8765/api/health >/dev/null; then HEALTH_OK=1; break; fi
+ sleep 1
+done
+if [[ "$HEALTH_OK" != 1 ]]; then
  say "Core health check failed; rollback attempted"
  if [[ -n "$OLD" && -d "$OLD" ]]; then ln -sfn "$OLD" /opt/mmanager/current.rollback; mv -Tf /opt/mmanager/current.rollback /opt/mmanager/current; systemctl restart mmanager-core.service mmanager-web.service; fi
  fail "Core health check failed. Inspect journalctl -u mmanager-core"
