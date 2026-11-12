@@ -461,57 +461,6 @@ def _bedrock_online(item):
     return [x for x in states.values() if x["online"]]
 
 
-def players(sid):
-    item = _server(sid)
-    root = Path(item["directory"])
-    online = []
-    raw = ""
-    if item["edition"] == "bedrock":
-        online = _bedrock_online(item)
-    else:
-        try:
-            raw = _rcon(item, "list")
-            match = re.search(r"There are \d+ of a max of \d+ players online:?(.*)", raw, re.I | re.S)
-            if match:
-                online = [{"name": x.strip(), "online": True} for x in match.group(1).split(",") if x.strip()]
-        except ManagerError as exc:
-            raw = str(exc)
-    if item["edition"] == "bedrock":
-        allowlist = _read_json(root / "allowlist.json", [])
-        permissions = _read_json(root / "permissions.json", [])
-        known = {str(x.get("name", "")).lower(): {"name": str(x.get("name", "")), "xuid": str(x.get("xuid", ""))}
-                 for x in allowlist if isinstance(x, dict) and x.get("name")}
-        for x in online:
-            known.setdefault(x["name"].lower(), x)
-        admins = []
-        for entry in permissions:
-            if isinstance(entry, dict) and entry.get("permission") == "operator":
-                xuid = str(entry.get("xuid", ""))
-                player = next((v for v in known.values() if v.get("xuid") == xuid), {"name": xuid, "xuid": xuid})
-                admins.append(player)
-        banned = []
-        offline = [v for k, v in known.items() if k not in {x["name"].lower() for x in online}]
-    else:
-        usercache = _read_json(root / "usercache.json", [])
-        ops = _read_json(root / "ops.json", [])
-        whitelist = _read_json(root / "whitelist.json", [])
-        banned = [{"name": str(x.get("name", "")), "uuid": str(x.get("uuid", ""))}
-                  for x in _read_json(root / "banned-players.json", []) if isinstance(x, dict)]
-        known = {}
-        for entry in usercache + ops + whitelist + banned:
-            if isinstance(entry, dict) and entry.get("name"):
-                known[str(entry["name"]).lower()] = {"name": str(entry["name"]), "uuid": str(entry.get("uuid", ""))}
-        admins = [{"name": str(x.get("name", "")), "uuid": str(x.get("uuid", "")), "level": int(x.get("level", 4))}
-                  for x in ops if isinstance(x, dict) and x.get("name")]
-        online_names = {x["name"].lower() for x in online}
-        offline = [v for k, v in known.items() if k not in online_names]
-    banned_names = {x["name"].lower() for x in banned}
-    for player in online + offline + admins:
-        player["banned"] = player["name"].lower() in banned_names
-    return {"online": online, "offline": offline, "admins": admins, "banned": banned,
-            "raw": raw, "edition": item["edition"], "permission_model": "bedrock" if item["edition"] == "bedrock" else "java"}
-
-
 def plugin_search(query):
     query=str(query).strip()[:100]
     if not query: raise ManagerError("Enter a plugin name to search.")
