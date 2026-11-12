@@ -99,4 +99,4 @@ def test_rcon_reassembles_multiple_packets(monkeypatch,tmp_path):
 def test_proc_stat_parser_handles_spaces_in_process_name():
     # Fields after the final ')' start at field 3; utime/stime are fields 14/15.
     raw = "123 (java server worker) S " + " ".join(str(i) for i in range(1, 30))
-    assert advanced._proc_cpu_ticks(raw) == 12 + 13
+    assert advanced._proc_cpu_ticks(raw) == 11 + 12
