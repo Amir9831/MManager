@@ -96,10 +96,21 @@ def main():
     name=input("Server name (blank to return): ").strip()
     item=next((x for x in rows if x["name"]==name),None)
     if item:
-     a=input("Action start/stop/restart/logs: ").strip()
+     a=input("Action start/stop/restart/logs/delete: ").strip().lower()
      try:
       if a=="logs": print(core.server_logs(item["id"]))
       elif a in {"start","stop","restart"}: core.server_action(item["id"],a)
+      elif a=="delete":
+       print(f"WARNING: This permanently deletes server '{item['name']}', its world/files, and its registered backup files.")
+       typed=input(f"Type the exact server name ({item['name']}) to confirm: ").strip()
+       if typed!=item["name"]:
+        print("Deletion cancelled: server name did not match.")
+       else:
+        result=core.delete_server(item["id"],confirm=True)
+        print("Server deleted." if result.get("deleted") else "Server deletion did not complete.")
+        if result.get("cleanup_warnings"):
+         print("Cleanup warnings:")
+         for warning in result["cleanup_warnings"]: print(" -",warning)
       else: print("Invalid action")
      except Exception as e: print("[ERROR]",e)
   elif c=="2": ctl("restart","mmanager-core.service")
