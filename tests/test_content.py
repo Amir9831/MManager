@@ -83,3 +83,34 @@ def test_java_to_bedrock_switch_archives_world_instead_of_converting(monkeypatch
     assert (old_root / "bedrock_server").exists()
     archived = list(old_root.parent.glob("minecraft.archived-*"))
     assert archived and (archived[0] / "world" / "level.dat").read_bytes() == b"java-world"
+
+
+def test_java_resource_pack_configuration(monkeypatch, tmp_path):
+    setup(monkeypatch, tmp_path)
+    item = core.create_server("minecraft", "java", "1.21.4", "vanilla", True)
+    content.configure_java_resource_pack(item["id"], "https://cdn.example.test/pack.zip", "a" * 40, True)
+    info = content.resource_pack_info(item["id"])
+    assert info["url"] == "https://cdn.example.test/pack.zip"
+    assert info["sha1"] == "a" * 40
+    assert info["required"] is True
+
+
+def test_import_backup_registers_only_valid_manager_archives(monkeypatch, tmp_path):
+    import io
+    import tarfile
+    import pytest
+    setup(monkeypatch, tmp_path)
+    item = core.create_server("minecraft", "java", "1.21.4", "vanilla", True)
+    valid = io.BytesIO()
+    with tarfile.open(fileobj=valid, mode="w:gz") as archive:
+        for name, data in (("server.properties", b"level-name=world\n"), ("server.jar", b"server-binary")):
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+    valid.seek(0)
+    imported = core.import_backup(item["id"], valid, "old-backup.tar.gz")
+    assert imported["imported"] is True
+    assert any(row["id"] == imported["id"] for row in core.list_backups(item["id"]))
+    invalid = io.BytesIO(b"not a tar archive" * 20)
+    with pytest.raises((core.ManagerError, tarfile.TarError)):
+        core.import_backup(item["id"], invalid, "bad.tar.gz")
