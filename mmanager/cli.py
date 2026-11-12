@@ -13,7 +13,8 @@ def ctl(a,u):
 def web_menu():
  while True:
   cfg=ensure()
-  print("\nWeb panel management")
+  print("
+Web panel management")
   print(f"1 Change panel path (current: /{cfg['path']}/)")
   print(f"2 Change administrator password")
   print(f"3 Change panel port (current: {cfg['port']})")
@@ -51,7 +52,8 @@ def web_menu():
    except ValueError: print("Invalid port."); continue
    if not 1024<=port<=65535: print("Port must be between 1024 and 65535."); continue
    cfg["port"]=port; save(cfg)
-   env=CONFIG / "web.env"; env.write_text(f"UVICORN_PORT={port}\n"); env.chmod(0o640)
+   env=CONFIG / "web.env"; env.write_text(f"UVICORN_PORT={port}
+"); env.chmod(0o640)
    if ctl("restart","mmanager-web.service"): print("Port updated.")
    else: print("Saved, but web service restart failed; check whether the port is already in use.")
   elif c=="4":
@@ -63,7 +65,8 @@ def web_menu():
 
 
 def update_manager():
- print("\nChecking for MManager updates...")
+ print("
+Checking for MManager updates...")
  if os.geteuid()!=0:
   print("Run the CLI with sudo to update MManager."); return
  import urllib.request
@@ -78,7 +81,17 @@ def update_manager():
 
 def main():
  while True:
-  print("\nMManager\n1 Server management\n2 Restart Core\n3 Restart Web\n4 Start services\n5 Stop services\n6 Diagnostics\n7 Web panel management\n8 Update MManager\n0 Exit")
+  print("
+MManager
+1 Server management
+2 Restart Core
+3 Restart Web
+4 Start services
+5 Stop services
+6 Diagnostics
+7 Web panel management
+8 Update MManager
+0 Exit")
   c=input("> ").strip()
   if c=="0": return
   if c=="1":
