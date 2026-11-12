@@ -22,21 +22,19 @@ def web_menu():
   c=input("> ").strip()
   if c=="0": return
   if c=="1":
-   rows=store.list_servers()
-   if not rows:
-    print("No server configured. Use the web panel's one-time setup.")
+   import re,secrets
+   raw=input("New path (leave blank to generate a secure random path): ").strip().strip("/")
+   new_path=raw or secrets.token_urlsafe(24)
+   if not re.fullmatch(r"[A-Za-z0-9_-]{24,128}",new_path):
+    print("Path must contain 24-128 URL-safe characters (letters, digits, _ or -).")
+    continue
+   cfg["path"]=new_path
+   save(cfg)
+   if ctl("restart","mmanager-web.service"):
+    print("Panel path updated. The previous URL is now invalid.")
+    print(f"New path: /{new_path}/")
    else:
-    item=rows[0]
-    try:
-     status=core.server_status(item["id"])["status"]
-     print("Server:",item["name"],"|",item["edition"],"|",item["software"],"|",item["version"],"|",status)
-     a=input("Action start/stop/restart/logs/backups/settings: ").strip().lower()
-     if a=="logs": print(core.server_logs(item["id"],200))
-     elif a in {"start","stop","restart"}: core.server_action(item["id"],a); print("Done.")
-     elif a=="backups": print(core.list_backups(item["id"]))
-     elif a=="settings": print(core.server_settings(item["id"]))
-     else: print("Invalid action")
-    except Exception as e: print("[ERROR]",e)
+    print("Path saved, but web service restart failed. Check: journalctl -u mmanager-web")
   elif c=="2":
    p=getpass("New administrator password (min 12 chars): ")
    if len(p)<12: print("Password must be at least 12 characters."); continue
