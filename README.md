@@ -22,8 +22,11 @@ Admin credentials: `/root/mmanager-admin-credentials.txt` (mode 0600). The insta
 - Live release catalogs and bundled Java/Bedrock/Geyser templates.
 - Editable `server.properties`, systemd lifecycle, and journal logs.
 - Compressed backups, guarded restore, and safety backup before restore.
-- RCON console and player list / Kick / Ban / Pardon for Java/Paper servers.
-- Process-level CPU and RAM telemetry with robust `/proc` parsing and automatic panel refresh.
+- Interactive game console: RCON for Java/Cross-play and a managed stdin FIFO for Bedrock Dedicated Server; supports commands and chat broadcasts.
+- Three player lists (online, known offline, admins), Java OP levels 1–4, Bedrock Operator/Member/Visitor roles, Kick, and Java/Cross-play Ban/Pardon.
+- Bedrock Dedicated Server has no native player ban list; its allowlist can restrict access only when enabled.
+- Process-level CPU and RAM telemetry through same-user `/proc` access; no sudo elevation is needed.
+- Read-only journal access through `systemd-journal` and narrowly scoped systemd lifecycle authorization through PolicyKit; compatible with `NoNewPrivileges=true`.
 - World upload/switch management with ZIP validation and pre-change backups.
 - Resource-pack configuration for Java/Cross-play and `.mcpack` installation for Bedrock.
 - Guarded Java/Bedrock/Cross-play switching; incompatible worlds are archived rather than silently converted.
@@ -34,7 +37,7 @@ Admin credentials: `/root/mmanager-admin-credentials.txt` (mode 0600). The insta
 ## Explicit limitations
 
 - Automated game-port firewall configuration is not implemented. Open Java ports as TCP and Bedrock ports as UDP in UFW and the provider firewall.
-- Standard Minecraft RCON and RCON-based player moderation are not available for Bedrock Dedicated Server. RCON is unencrypted and may listen on all interfaces; restrict its inbound TCP port yourself before enabling it.
+- RCON is unencrypted and may listen on all interfaces; restrict its inbound TCP port yourself before enabling it. Bedrock uses the local server stdin channel instead of RCON.
 - Plugin management is supported only on Paper-based servers (Paper and Cross-play), not Vanilla or Bedrock.
 - Minecraft mods are not plugins. Fabric/Forge mod-loader installation is not yet implemented; the panel explains this instead of allowing incompatible mod JAR uploads.
 - The panel should be exposed through HTTPS using a trusted reverse proxy for Internet-facing deployments. The random URL path is an additional layer, not a replacement for authentication.
