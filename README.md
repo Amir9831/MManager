@@ -8,11 +8,7 @@ Minecraft server manager for Ubuntu 22.04 / 24.04 / 26.04.
 curl -fsSL https://raw.githubusercontent.com/Amir9831/MManager/main/install.sh | sudo bash
 ```
 
-Admin credentials: `/root/mmanager-admin-credentials.txt` (0600). Panel: `http://127.0.0.1:8766`. Remote access only via SSH tunnel:
-
-```bash
-ssh -L 8766:127.0.0.1:8766 -L 8765:127.0.0.1:8765 USER@SERVER
-```
+Admin credentials: `/root/mmanager-admin-credentials.txt` (0600). After installation, the installer prints the public panel URL with its random path and port. Use `Mmanager` → **Web panel management** to change the path, administrator password, or port. The panel and its API share the same public port; the core API remains loopback-only.
 
 ## Implemented
 
