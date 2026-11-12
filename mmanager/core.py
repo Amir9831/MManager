@@ -59,6 +59,9 @@ def server_settings(sid):
  item=store.get_server(sid)
  if not item: raise ManagerError("GM-108: Server not found")
  path=Path(item["directory"])/"server.properties"; values={}
+ java_defaults={"allow-flight":"false","allow-nether":"true","broadcast-console-to-ops":"true","broadcast-rcon-to-ops":"true","difficulty":"easy","enable-command-block":"false","enable-query":"false","enable-rcon":"false","enable-status":"true","enforce-secure-profile":"true","enforce-whitelist":"false","entity-broadcast-range-percentage":"100","force-gamemode":"false","function-permission-level":"2","gamemode":"survival","generate-structures":"true","hardcore":"false","hide-online-players":"false","level-name":"world","level-seed":"","level-type":"minecraft:normal","max-players":"20","max-tick-time":"60000","max-world-size":"29999984","motd":"A Minecraft Server","network-compression-threshold":"256","online-mode":"true","op-permission-level":"4","player-idle-timeout":"0","prevent-proxy-connections":"false","pvp":"true","rate-limit":"0","rcon.password":"","rcon.port":"25575","require-resource-pack":"false","resource-pack":"","server-ip":"","server-port":"25565","simulation-distance":"10","spawn-animals":"true","spawn-monsters":"true","spawn-npcs":"true","spawn-protection":"16","sync-chunk-writes":"true","text-filtering-config":"","use-native-transport":"true","view-distance":"10","white-list":"false"}
+ bedrock_defaults={"allow-cheats":"false","allow-list":"false","chat-restriction":"None","compression-algorithm":"zlib","compression-threshold":"1","content-log-file-enabled":"false","default-player-permission-level":"member","difficulty":"easy","disable-player-interaction":"false","enable-lan-broadcast":"true","enable-lan-visibility":"true","force-gamemode":"false","gamemode":"survival","level-name":"Bedrock level","level-seed":"","max-players":"10","max-threads":"8","online-mode":"true","player-idle-timeout":"30","server-name":"Dedicated Server","server-port":"19132","server-portv6":"19133","server-authoritative-block-breaking":"client-auth","server-authoritative-movement":"server-auth","texturepack-required":"false","tick-distance":"4","view-distance":"32"}
+ values=dict(bedrock_defaults if item["edition"]=="bedrock" else java_defaults)
  if path.exists():
   for line in path.read_text(errors="replace").splitlines():
    if line and not line.lstrip().startswith("#") and "=" in line:
@@ -69,7 +72,7 @@ def update_server_settings(sid,changes):
  item=store.get_server(sid)
  if not item: raise ManagerError("GM-108: Server not found")
  for k,v in changes.items():
-  if not re.fullmatch(r"[a-z0-9_.-]{1,64}",k) or not re.fullmatch(r"[A-Za-z0-9_. -]{0,512}",str(v)): raise ManagerError("GM-240: Invalid server property: "+str(k))
+  if not re.fullmatch(r"[a-z0-9_.-]{1,64}",k) or not re.fullmatch(r"[^\\r\\n]{0,512}",str(v)): raise ManagerError("GM-240: Invalid server property: "+str(k))
  path=Path(item["directory"])/"server.properties"; current=server_settings(sid)["settings"]
  current.update({k:str(v) for k,v in changes.items()})
  tmp=path.with_suffix(".properties.tmp")
