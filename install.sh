@@ -59,6 +59,9 @@ if [[ ! -s /etc/mmanager/web.json ]]; then
  chmod 0640 /etc/mmanager/web.json
 fi
 chown root:mmanager /etc/mmanager/web.json; chmod 0640 /etc/mmanager/web.json
+PANEL_PORT=$(python3 -c 'import json;print(json.load(open("/etc/mmanager/web.json"))["port"])')
+printf 'UVICORN_PORT=%s\\n' "$PANEL_PORT" >/etc/mmanager/web.env
+chown root:mmanager /etc/mmanager/web.env; chmod 0640 /etc/mmanager/web.env
 OLD=""; [[ -L /opt/mmanager/current ]] && OLD=$(readlink -f /opt/mmanager/current)
 ln -sfn "$RELEASE" /opt/mmanager/current.next; mv -Tf /opt/mmanager/current.next /opt/mmanager/current
 ln -sfn /opt/mmanager/current/venv/bin/Mmanager /usr/local/bin/Mmanager
