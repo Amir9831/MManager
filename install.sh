@@ -11,10 +11,12 @@ command -v systemctl >/dev/null || fail "systemd required"
 export DEBIAN_FRONTEND=noninteractive
 say "Installing system dependencies"
 apt-get update -y
+BDS_RUNTIME_PKGS=(libstdc++6 libatomic1)
+for candidate in libcurl4 libcurl4t64 libssl3 libssl3t64; do apt-cache show "$candidate" >/dev/null 2>&1 && BDS_RUNTIME_PKGS+=("$candidate"); done
 if apt-cache show openjdk-21-jre-headless >/dev/null 2>&1; then
- apt-get install -y ca-certificates curl tar python3 python3-venv python3-pip openjdk-21-jre-headless sudo libcurl4 libssl3 libstdc++6 libatomic1
+ apt-get install -y ca-certificates curl tar python3 python3-venv python3-pip openjdk-21-jre-headless sudo "${BDS_RUNTIME_PKGS[@]}"
 else
- apt-get install -y ca-certificates curl tar wget gpg python3 python3-venv python3-pip sudo libcurl4 libssl3 libstdc++6 libatomic1
+ apt-get install -y ca-certificates curl tar wget gpg python3 python3-venv python3-pip sudo "${BDS_RUNTIME_PKGS[@]}"
  install -d -m 0755 /etc/apt/keyrings
  wget -qO- https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg
  echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $VERSION_CODENAME main" >/etc/apt/sources.list.d/adoptium.list
