@@ -151,9 +151,14 @@ def _systemctl(action,item):
  if p.returncode:raise ManagerError("GM-220: "+(p.stderr.strip() or p.stdout.strip())[:300])
 def _active(item):
  cmd=["/usr/bin/systemctl","is-active",f"mmanager-mc@{item['name']}.service"]
- p=subprocess.run(cmd,capture_output=True,text=True,timeout=15)
+ try:
+  p=subprocess.run(cmd,capture_output=True,text=True,timeout=15)
+ except (OSError,subprocess.TimeoutExpired) as exc:
+  raise ManagerError("GM-222: Cannot determine server state: "+str(exc)[:250])
  if p.returncode==0:return True
- if p.returncode==3 and p.stdout.strip()=="inactive":return False
+ # systemctl uses exit status 3 for a known unit that is not active,
+ # including failed/inactive states. A failed server must still be switchable.
+ if p.returncode==3:return False
  raise ManagerError("GM-222: Cannot safely determine server state: "+(p.stderr.strip() or p.stdout.strip())[:250])
 def server_action(sid,action):
  item=store.get_server(sid)
@@ -519,6 +524,19 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
                 text = geyser_cfg.read_text()
                 text = text.replace("port: 19132", "port: " + str(bedrock_port)).replace("port: 25565", "port: " + str(java_port))
                 geyser_cfg.write_text(text)
+        # Validate the complete target runtime before touching the live directory.
+        required = ["server.properties", "run.sh"]
+        required.append("bedrock_server" if edition == "bedrock" else "server.jar")
+        missing = [name for name in required if not (stage / name).is_file()]
+        if missing:
+            raise ManagerError("GM-237: Target runtime is incomplete; missing: " + ", ".join(missing))
+        if edition == "crossplay":
+            plugins = stage / "plugins"
+            for name in ("Geyser-Spigot.jar", "floodgate-spigot.jar"):
+                if not (plugins / name).is_file():
+                    raise ManagerError("GM-237: Cross-play runtime is incomplete; missing plugins/" + name)
+            if not (plugins / "Geyser-Spigot" / "config.yml").is_file():
+                raise ManagerError("GM-237: Cross-play runtime is missing Geyser config.yml")
         root.rename(archived)
         try:
             stage.rename(root)
