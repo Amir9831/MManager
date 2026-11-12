@@ -84,6 +84,38 @@ def update_manager():
   subprocess.run(["/usr/bin/bash","-s"],input=script,check=True)
  except Exception as exc: print("[UPDATE FAILED]",exc)
 
+def uninstall_manager():
+ if os.geteuid()!=0:
+  print("Run the CLI with sudo to remove MManager."); return
+ print("\\nWARNING: This removes MManager itself, its services, web credentials/configuration and installed program files.")
+ print("Minecraft server data, worlds and backups under /var/lib/mmanager will be PRESERVED.")
+ if input("Type DELETE to continue: ").strip()!="DELETE":
+  print("Deletion cancelled."); return
+ # Stop and disable every managed Minecraft service before removing the template.
+ units=subprocess.run(["systemctl","list-units","--all","--type=service","--no-legend","--plain","mmanager-mc@*.service"],capture_output=True,text=True,check=False)
+ found=set()
+ for line in units.stdout.splitlines():
+  unit=line.split()[0] if line.split() else ""
+  if unit.startswith("mmanager-mc@") and unit.endswith(".service") and all(ch.isalnum() or ch in "@._-" for ch in unit):
+   found.add(unit)
+ for unit in sorted(found):
+  subprocess.run(["systemctl","disable","--now",unit],check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+ for unit in ("mmanager-web.service","mmanager-core.service"):
+  subprocess.run(["systemctl","disable","--now",unit],check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+ # Remove MManager-owned system integration only; do not touch UFW or provider firewalls.
+ for path in ("/etc/systemd/system/mmanager-web.service","/etc/systemd/system/mmanager-core.service","/etc/systemd/system/mmanager-mc@.service","/etc/polkit-1/rules.d/50-mmanager.rules","/etc/sudoers.d/mmanager","/etc/logrotate.d/mmanager","/usr/local/bin/Mmanager","/root/mmanager-admin-credentials.txt"):
+  try:
+   if os.path.islink(path) or os.path.isfile(path): os.unlink(path)
+  except OSError as exc: print("Could not remove",path,":",exc)
+ for path in ("/opt/mmanager","/etc/mmanager"):
+  try: shutil.rmtree(path)
+  except FileNotFoundError: pass
+  except OSError as exc: print("Could not remove",path,":",exc)
+ subprocess.run(["systemctl","daemon-reload"],check=False)
+ subprocess.run(["systemctl","reset-failed"],check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+ print("MManager has been removed. Minecraft data and backups remain in /var/lib/mmanager.")
+ print("To remove the preserved data too, manually review and delete /var/lib/mmanager and /var/log/mmanager.")
+
 def main():
  while True:
   print("\nMManager\n1 Server management\n2 Restart Core\n3 Restart Web\n4 Start services\n5 Stop services\n6 Diagnostics\n7 Web panel management\n8 Update MManager\n0 Exit")
