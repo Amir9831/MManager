@@ -101,7 +101,8 @@ def players(sid):
     online = []
     raw = ""
     if item["edition"] == "bedrock":
-        online = _bedrock_online(item)
+        history = _bedrock_online(item)
+        online = [x for x in history if x["online"]]
     else:
         try:
             raw = _rcon(item, "list")
@@ -115,7 +116,7 @@ def players(sid):
         permissions = _read_json(root / "permissions.json", [])
         known = {str(x.get("name", "")).lower(): {"name": str(x.get("name", "")), "xuid": str(x.get("xuid", ""))}
                  for x in allowlist if isinstance(x, dict) and x.get("name")}
-        for x in online:
+        for x in history:
             known.setdefault(x["name"].lower(), x)
         admins = []
         for entry in permissions:
@@ -174,10 +175,10 @@ def moderate(sid, action, player, reason="", permission_level=4, permission="ope
         if permission not in {"operator", "member", "visitor"}:
             raise ManagerError("Bedrock permission must be operator, member or visitor.")
         allowlist = _read_json(Path(item["directory"]) / "allowlist.json", [])
-        online = _bedrock_online(item)
+        history = _bedrock_online(item)
         match = next((x for x in allowlist if isinstance(x, dict) and str(x.get("name", "")).lower() == player.lower()), None)
         if not match:
-            match = next((x for x in online if x["name"].lower() == player.lower()), None)
+            match = next((x for x in history if x["name"].lower() == player.lower()), None)
         xuid = str((match or {}).get("xuid", ""))
         if not xuid:
             raise ManagerError("Bedrock XUID not found. The player must join once or be added to allowlist first.")
@@ -198,7 +199,9 @@ def moderate(sid, action, player, reason="", permission_level=4, permission="ope
             if isinstance(entry, dict) and str(entry.get("name", "")).lower() == player.lower():
                 entry["level"] = int(permission_level)
         path.write_text(json.dumps(entries, indent=2) + "\n")
-        return {"action": action, "player": player, "response": response, "permission_level": int(permission_level)}
+        from .core import _systemctl
+        _systemctl("restart", item)
+        return {"action": action, "player": player, "response": response, "permission_level": int(permission_level), "restart_required": True}
     if action == "deop":
         command = "deop " + player
     elif action == "kick":
@@ -268,7 +271,7 @@ def _bedrock_online(item):
         if match:
             name, xuid = match.group(1).strip(), match.group(2)
             states[name.lower()] = {"name": name, "xuid": xuid, "online": bool(connected)}
-    return [x for x in states.values() if x["online"]]
+    return list(states.values())
 
 def _proc_cpu_ticks(raw):
     """Read utime+stime from /proc/<pid>/stat without being confused by spaces in comm."""
