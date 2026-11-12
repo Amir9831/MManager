@@ -135,11 +135,11 @@ def telemetry(sid):
         stat2 = _proc_cpu_ticks((proc / "stat").read_text())
         total2 = sum(int(x) for x in Path("/proc/stat").read_text().splitlines()[0].split()[1:])
         status = (proc / "status").read_text()
-        rss_match = re.search(r"VmRSS:\\s+(\\d+)\\s+kB", status)
+        rss_match = re.search(r"VmRSS:\s+(\d+)\s+kB", status)
         if not rss_match:
             raise ValueError("VmRSS is unavailable")
         memory = int(rss_match.group(1)) * 1024
-        mem_total_match = re.search(r"MemTotal:\\s+(\\d+)", Path("/proc/meminfo").read_text())
+        mem_total_match = re.search(r"MemTotal:\s+(\d+)", Path("/proc/meminfo").read_text())
         if not mem_total_match:
             raise ValueError("MemTotal is unavailable")
         mem_total = int(mem_total_match.group(1)) * 1024
