@@ -71,10 +71,10 @@ on_error(){
   if [[ -n "$OLD" && -d "$OLD" ]]; then
    ln -sfn "$OLD" "$CURRENT.rollback" || true
    mv -Tf "$CURRENT.rollback" "$CURRENT" || true
-   if [[ "$OLD_JOURNAL_MEMBER" == "1" ]]; then usermod -aG systemd-journal mmanager 2>/dev/null || true; else gpasswd -d mmanager systemd-journal >/dev/null 2>&1 || true; fi
   else
    rm -f "$CURRENT" "$CURRENT.rollback"
   fi
+  if [[ "$OLD_JOURNAL_MEMBER" == "1" ]]; then usermod -aG systemd-journal mmanager 2>/dev/null || true; else gpasswd -d mmanager systemd-journal >/dev/null 2>&1 || true; fi
   restore_snapshot || true
   systemctl daemon-reload || true
   if [[ -n "$OLD" && -d "$OLD" ]]; then
@@ -107,6 +107,8 @@ chmod 0750 /etc/mmanager
 install -d -o mmanager -g mmanager -m 0750 /var/lib/mmanager /var/lib/mmanager/servers /var/lib/mmanager/backups /var/log/mmanager /var/log/mmanager/servers
 chown -R mmanager:mmanager /var/lib/mmanager /var/log/mmanager
 find /var/lib/mmanager /var/log/mmanager -type d -exec chmod 0750 {} +
+find /var/lib/mmanager/servers /var/lib/mmanager/backups -type f -exec chmod u+rw,go-rwx {} +
+find /var/lib/mmanager/servers -type f \( -name run.sh -o -name bedrock_server \) -exec chmod u+x {} +
 
 say "Resolving the MManager source revision"
 curl --fail --location --retry 3 --connect-timeout 15 "https://api.github.com/repos/$REPO/commits/main" -o "$TMP/commit.json"
