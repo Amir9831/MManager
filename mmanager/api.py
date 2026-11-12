@@ -11,7 +11,7 @@ def secured(authorization:str|None=Header(default=None)):
  token=authorization[7:] if authorization and authorization.startswith("Bearer ") else ""
  if not auth.verify_token(token): raise HTTPException(401,detail="Authentication required")
  return True
-app.mount("/", StaticFiles(directory=str(Path(__file__).parent / "web"), html=True), name="panel")\n\n@app.get("/api/health")
+@app.get("/api/health")
 def health(): return {"status":"ok","version":"0.2.0"}
 @app.post("/api/login")
 def login(p:Login,request:Request):
@@ -45,7 +45,7 @@ def restore(sid:str,bid:str,confirm:bool=False,_:bool=Depends(secured)):
  try: return core.restore_backup(sid,bid,confirm)
  except (core.ManagerError,OSError,ValueError) as e: raise HTTPException(400,detail=str(e))
 
-class PathPrefixApp:
+app.mount("/", StaticFiles(directory=str(Path(__file__).parent / "web"), html=True), name="panel")\n\nclass PathPrefixApp:
     """Expose the API and static panel only beneath the configured secret path."""
     def __init__(self, inner):
         self.inner = inner
