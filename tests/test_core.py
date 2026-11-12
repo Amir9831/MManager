@@ -78,6 +78,9 @@ def test_bedrock_install_uses_verified_zip(monkeypatch,tmp_path):
     assert "server-port=19132" in properties
     assert "server-portv6=19132" in properties
     assert "enable-lan-visibility=false" in properties
+    assert "enable-lan-broadcast=false" in properties
+    assert "transport=nethernet" in properties
+    assert "server-udp-ports=49152-49200" in properties
 
 
 def test_server_logs_read_rotated_file_tail_without_subprocess(monkeypatch, tmp_path):
@@ -267,6 +270,9 @@ def test_bedrock_update_reapplies_allocated_udp_ports(monkeypatch, tmp_path):
     assert props["server-port"] == str(item["java_port"])
     assert props["server-portv6"] == str(item["java_port"])
     assert props["enable-lan-visibility"] == "false"
+    assert props["enable-lan-broadcast"] == "false"
+    assert props["transport"] == "nethernet"
+    assert props["server-udp-ports"] == "49152-49200"
     assert props["server-name"] == "Keep me"
 
 
