@@ -67,7 +67,6 @@ class PathPrefixApp:
         elif path.startswith(prefix + "/"):
             scope = dict(scope)
             scope["path"] = path[len(prefix):]
-            scope["root_path"] = scope.get("root_path", "") + prefix
         else:
             body = b'{"detail":"Not Found"}'
             await send({"type":"http.response.start","status":404,"headers":[(b"content-type",b"application/json"),(b"content-length",str(len(body)).encode())]})
