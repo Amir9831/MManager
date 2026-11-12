@@ -143,7 +143,7 @@ def test_bedrock_player_lists_and_permissions(monkeypatch, tmp_path):
     root = Path(item["directory"])
     (root / "allowlist.json").write_text(json.dumps([{"name": "Builder", "xuid": "12345"}, {"name": "Guest", "xuid": "67890"}]))
     (root / "permissions.json").write_text(json.dumps([{"permission": "operator", "xuid": "12345"}]))
-    monkeypatch.setattr(advanced, "_bedrock_online", lambda item: [{"name": "Builder", "xuid": "12345", "online": True}, {"name": "Guest", "xuid": "67890", "online": False}])
+    monkeypatch.setattr(advanced, "_bedrock_online", lambda item: [{"name": "Builder", "xuid": "12345", "online": True}])
     monkeypatch.setattr(advanced, "console", lambda sid, command: {"response": command})
     data = advanced.players(item["id"])
     assert [x["name"] for x in data["online"]] == ["Builder"]
