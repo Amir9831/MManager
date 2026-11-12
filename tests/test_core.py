@@ -199,3 +199,55 @@ def test_other_downloads_keep_mmanager_user_agent(monkeypatch, tmp_path):
     monkeypatch.setattr(core.urllib.request, "urlopen", fake_urlopen)
     core._download("https://example.com/server.jar", tmp_path / "server.jar")
     assert seen == ["MManager/0.2 (https://github.com/Amir9831/MManager)"]
+
+
+
+def test_bedrock_udp_allocation_does_not_reserve_java_tcp_ports(monkeypatch, tmp_path):
+    setup(monkeypatch, tmp_path)
+    with store.connect() as db:
+        db.execute(
+            "INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory,eula_accepted) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            ("java-id", "javaexisting", "java", "vanilla", "1.21.4", 19132, None,
+             str(tmp_path / "servers" / "javaexisting"), 1),
+        )
+    calls = []
+
+    def choose(preferred, protocol, reserved=None, **kwargs):
+        calls.append((preferred, protocol, set(reserved or set())))
+        return preferred
+
+    monkeypatch.setattr(core, "choose_port", choose)
+    item = core.create_server("bedrockudp", "bedrock", "1.26.63", "bedrock", True)
+    assert item["java_port"] == 19132
+    assert calls == [(19132, "udp", set())]
+
+
+def test_bedrock_status_detects_wrong_udp_port(monkeypatch, tmp_path):
+    setup(monkeypatch, tmp_path)
+    item = {
+        "id": "status-id", "name": "minecraft", "edition": "bedrock",
+        "software": "bedrock", "version": "1.26.63", "java_port": 19132,
+        "bedrock_port": None, "directory": str(tmp_path / "servers" / "minecraft"),
+    }
+    with store.connect() as db:
+        db.execute(
+            "INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory,eula_accepted) "
+            "VALUES(:id,:name,:edition,:software,:version,:java_port,:bedrock_port,:directory,1)",
+            item,
+        )
+
+    class Result:
+        returncode = 0
+        stdout = "UNCONN 0 0 *:7551 *:* users:((\"bedrock_server\",pid=8907,fd=18))\\n"
+        stderr = ""
+
+    monkeypatch.setattr(core, "_active", lambda _: True)
+    monkeypatch.setattr(core.shutil, "which", lambda _: "/usr/bin/ss")
+    monkeypatch.setattr(core.subprocess, "run", lambda *args, **kwargs: Result())
+
+    status = core.server_status("status-id")
+    assert status["status"] == "degraded"
+    assert status["health"] == "degraded"
+    assert status["expected"] == [{"protocol": "udp", "port": 19132}]
+    assert "UDP/19132" in status["error"]
