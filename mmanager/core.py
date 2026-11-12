@@ -207,6 +207,9 @@ def import_backup(sid, fileobj, original_filename):
   with tarfile.open(dest,"r:gz") as tar:
    members=tar.getmembers()
    if not members:raise ManagerError("GM-234: Backup archive is empty")
+   root_files={Path(m.name).parts[0] for m in members if Path(m.name).parts}
+   if "server.properties" not in root_files or not ({"server.jar","bedrock_server"} & root_files):
+    raise ManagerError("GM-234: Archive is not a valid MManager Minecraft server backup")
    expanded=0
    for member in members:
     target=(Path("/safe-root")/member.name).resolve()
@@ -437,11 +440,12 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
     was_active = _active(item)
     if was_active:
         _systemctl("stop", item)
-    backup = create_backup(sid)
     root = Path(item["directory"]).resolve()
     stage = root.parent / (root.name + ".switch-stage-" + secrets.token_hex(4))
     archived = root.parent / (root.name + ".archived-" + secrets.token_hex(4))
+    backup = None
     try:
+        backup = create_backup(sid)
         if cross_edition:
             stage.mkdir()
             _write_server_runtime(stage, edition, software, version,
