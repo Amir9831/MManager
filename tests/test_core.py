@@ -149,3 +149,22 @@ def test_switch_java_to_bedrock_archives_old_world_and_uses_new_runtime(monkeypa
     assert (root/"bedrock_server").exists()
     assert not (root/"world").exists()
     assert archives and (archives[0]/"world"/"level.dat").read_bytes()==b"java-world"
+
+
+def test_active_treats_failed_known_unit_as_stopped(monkeypatch):
+    class Result:
+        returncode=3
+        stdout="failed\\n"
+        stderr=""
+    monkeypatch.setattr(core.subprocess,"run",lambda *args,**kwargs:Result())
+    assert core._active({"name":"broken-server"}) is False
+
+
+def test_active_still_rejects_unknown_systemd_unit(monkeypatch):
+    class Result:
+        returncode=4
+        stdout="unknown\\n"
+        stderr=""
+    monkeypatch.setattr(core.subprocess,"run",lambda *args,**kwargs:Result())
+    with pytest.raises(core.ManagerError,match="GM-222"):
+        core._active({"name":"missing-server"})
