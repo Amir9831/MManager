@@ -339,6 +339,17 @@ def update_server(sid, version):
                 stage=tmp/"stage"
                 shutil.copytree(root,stage,symlinks=False)
                 shutil.copy2(downloaded,stage/"server.jar")
+            # Reapply MManager-owned listener settings after replacing the runtime.
+            # This repairs stale/default ports while preserving unrelated user settings.
+            if item["edition"] == "bedrock":
+                _configure_bedrock_properties(stage / "server.properties", item["java_port"])
+            else:
+                _configure_java_properties(stage / "server.properties", item["java_port"])
+            if item["edition"] == "crossplay":
+                geyser_config = stage / "plugins" / "Geyser-Spigot" / "config.yml"
+                if not geyser_config.is_file():
+                    raise ManagerError("GM-237: Cross-play update is missing the Geyser config.yml")
+                _configure_geyser(geyser_config, item["bedrock_port"], item["java_port"])
             state={"backup_id":backup["id"],"previous_version":item["version"],"updated_version":version}
             (stage/"mmanager-update-state.json").write_text(json.dumps(state))
             old=root.parent/(root.name+".update-old-"+secrets.token_hex(4))
