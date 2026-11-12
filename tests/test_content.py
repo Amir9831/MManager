@@ -114,3 +114,33 @@ def test_import_backup_registers_only_valid_manager_archives(monkeypatch, tmp_pa
     invalid = io.BytesIO(b"not a tar archive" * 20)
     with pytest.raises((core.ManagerError, tarfile.TarError)):
         core.import_backup(item["id"], invalid, "bad.tar.gz")
+
+
+def test_bedrock_mcpack_install_and_remove(monkeypatch, tmp_path):
+    import io
+    import json
+    import uuid
+    setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(core, "_bedrock", lambda v: {"url": "https://example.invalid/bds.zip", "checksum": None, "algorithm": "sha256"})
+    def download(url, dest, *args):
+        with zipfile.ZipFile(dest, "w") as z:
+            z.writestr("bedrock_server", b"fake bds binary")
+    monkeypatch.setattr(core, "_download", download)
+    item = core.create_server("minecraft", "bedrock", "1.26.63", "bedrock", True)
+    world = Path(item["directory"]) / "worlds" / "Bedrock level"
+    world.mkdir(parents=True)
+    (world / "level.dat").write_bytes(b"world")
+    pack_id = str(uuid.uuid4())
+    pack = io.BytesIO()
+    manifest = {"format_version": 2, "header": {"name": "Test Pack", "description": "test", "uuid": pack_id, "version": [1, 0, 0]}, "modules": []}
+    with zipfile.ZipFile(pack, "w") as z:
+        z.writestr("manifest.json", json.dumps(manifest))
+        z.writestr("textures/test.txt", "resource")
+    pack.seek(0)
+    result = content.install_bedrock_resource_pack(item["id"], pack, "test.mcpack", True)
+    assert result["installed"] is True
+    assert (Path(item["directory"]) / "resource_packs" / pack_id / "manifest.json").exists()
+    assert content.resource_pack_info(item["id"])["required"] is True
+    removed = content.remove_bedrock_resource_pack(item["id"], pack_id)
+    assert removed["removed"] == pack_id
+    assert not (Path(item["directory"]) / "resource_packs" / pack_id).exists()
