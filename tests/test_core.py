@@ -296,10 +296,24 @@ def test_crossplay_update_reapplies_java_and_geyser_ports(monkeypatch, tmp_path)
 
 
 def test_tcp_and_udp_can_share_same_numeric_port(monkeypatch, tmp_path):
+    import zipfile
     setup(monkeypatch, tmp_path)
     # TCP and UDP are separate transport namespaces: Java TCP/19132 and
     # Bedrock UDP/19132 are both valid and must not collide in SQLite.
     monkeypatch.setattr(core, "choose_port", lambda preferred, protocol, reserved=None: 19132)
+    monkeypatch.setattr(core, "_bedrock", lambda v: {
+        "url": "https://invalid.test/bds.zip", "checksum": None, "algorithm": "sha256"
+    })
+
+    def fake_download(url, dest, *args):
+        if str(dest).endswith("bedrock.zip"):
+            with zipfile.ZipFile(dest, "w") as archive:
+                archive.writestr("bedrock_server", b"fake executable")
+        else:
+            Path(dest).write_bytes(b"x" * 2048)
+        return Path(dest).stat().st_size
+
+    monkeypatch.setattr(core, "_download", fake_download)
     java = core.create_server("java19132", "java", "1.21.4", "vanilla", True)
     bedrock = core.create_server("bedrock19132", "bedrock", "1.26.63", "bedrock", True)
     assert java["java_port"] == bedrock["java_port"] == 19132
