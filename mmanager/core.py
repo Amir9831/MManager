@@ -365,7 +365,7 @@ def _write_server_runtime(root, edition, software, version, java_port, bedrock_p
         props = (Path(__file__).parent / "templates" / "bedrock-server.properties").read_text()
         props = re.sub(r"(?m)^server-port=.*$", "server-port=" + str(java_port), props)
         (root / "server.properties").write_text(props)
-        (root / "run.sh").write_text("#!/bin/sh\\ncd " + str(root) + "\\nLD_LIBRARY_PATH=. exec ./bedrock_server\\n")
+        (root / "run.sh").write_text("#!/bin/sh\ncd \"$(dirname \"$0\")\"\nLD_LIBRARY_PATH=. exec ./bedrock_server\n")
     else:
         artifact = _vanilla(version) if software == "vanilla" else _paper(version)
         jar = root / "server.jar"
@@ -374,8 +374,8 @@ def _write_server_runtime(root, edition, software, version, java_port, bedrock_p
             props = (Path(__file__).parent / "templates" / "java-server.properties").read_text()
             (root / "server.properties").write_text(props)
         _set_property_file(root / "server.properties", "server-port", str(java_port))
-        (root / "eula.txt").write_text("eula=true\\n")
-        (root / "run.sh").write_text("#!/bin/sh\\ncd " + str(root) + "\\nexec /usr/bin/java -Xms256M -Xmx1G -jar server.jar nogui\\n")
+        (root / "eula.txt").write_text("eula=true\n")
+        (root / "run.sh").write_text("#!/bin/sh\ncd \"$(dirname \"$0\")\"\nexec /usr/bin/java -Xms256M -Xmx1G -jar server.jar nogui\n")
     (root / "run.sh").chmod(0o750)
     if edition == "crossplay":
         plugins = root / "plugins"
@@ -405,7 +405,7 @@ def _set_property_file(path, key, value):
             result.append(row)
     if not found:
         result.append(key + "=" + str(value))
-    path.write_text("\\n".join(result) + "\\n")
+    path.write_text("\n".join(result) + "\n")
 
 
 def switch_server(sid, edition, software, version, confirm_world_reset=False):
@@ -481,7 +481,7 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
             used_tcp = {r[0] for r in db.execute("SELECT java_port FROM servers WHERE id<>? AND java_port IS NOT NULL", (sid,))}
             used_udp = {r[0] for r in db.execute("SELECT bedrock_port FROM servers WHERE id<>? AND bedrock_port IS NOT NULL", (sid,))}
         if edition == "bedrock":
-            java_port = choose_port(19132, "udp", used_tcp)
+            java_port = choose_port(19132, "udp", used_udp | used_tcp)
             bedrock_port = None
         else:
             java_port = choose_port(25565, "tcp", used_tcp)
@@ -513,8 +513,15 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
                 "world_archived": bool(cross_edition), "restarted": was_active}
     except Exception:
         shutil.rmtree(stage, ignore_errors=True)
-        if archived.exists() and not root.exists():
+        if archived.exists():
+            failed = root.parent / (root.name + ".switch-failed-" + secrets.token_hex(4))
+            if root.exists():
+                root.rename(failed)
             archived.rename(root)
+            shutil.rmtree(failed, ignore_errors=True)
+        with store.connect() as db:
+            db.execute("UPDATE servers SET edition=?,software=?,version=?,java_port=?,bedrock_port=? WHERE id=?",
+                       (item["edition"], item["software"], item["version"], item["java_port"], item["bedrock_port"], sid))
         if was_active and root.exists():
             try:
                 _systemctl("start", item)
