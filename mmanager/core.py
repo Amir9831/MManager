@@ -121,11 +121,15 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
    binary=d/"bedrock_server"
    if not binary.exists(): raise ManagerError("GM-217: Bedrock binary missing from official archive")
    binary.chmod(0o750)
-   (d/"server.properties").write_text("server-port=19132\nserver-portv6=19133\n")
+   props=(Path(__file__).parent/"templates"/"bedrock-server.properties").read_text()
+   props=re.sub(r"(?m)^server-port=.*$","server-port="+str(item["java_port"]),props)
+   (d/"server.properties").write_text(props)
    (d/"run.sh").write_text("#!/bin/sh\ncd /var/lib/mmanager/servers/"+name+"\nLD_LIBRARY_PATH=. exec ./bedrock_server\n")
   else:
    (d/"eula.txt").write_text("eula=true\n")
-   (d/"server.properties").write_text(f"server-port={item['java_port']}\n")
+   props=(Path(__file__).parent/"templates"/"java-server.properties").read_text()
+   props=re.sub(r"(?m)^server-port=.*$","server-port="+str(item["java_port"]),props)
+   (d/"server.properties").write_text(props)
    (d/"run.sh").write_text("#!/bin/sh\ncd /var/lib/mmanager/servers/"+name+"\nexec /usr/bin/java -Xms256M -Xmx1G -jar server.jar nogui\n")
   (d/"run.sh").chmod(0o750)
   if edition=="crossplay":
