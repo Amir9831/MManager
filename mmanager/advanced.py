@@ -163,6 +163,8 @@ def install_plugin(sid, version_id):
     with urllib.request.urlopen(req,timeout=20) as r: v=json.load(r)
     if "paper" not in v.get("loaders",[]) and "spigot" not in v.get("loaders",[]) and "purpur" not in v.get("loaders",[]):
         raise ManagerError("Selected release is not marked for Paper/Spigot/Purpur.")
+    if item["version"] not in v.get("game_versions",[]):
+        raise ManagerError("Selected plugin release does not support this Minecraft version.")
     file=next((f for f in v.get("files",[]) if f.get("primary")),None)
     if not file or not file["filename"].endswith(".jar"): raise ManagerError("Modrinth release has no primary JAR file.")
     dest=Path(item["directory"])/"plugins"/Path(file["filename"]).name
