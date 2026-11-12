@@ -27,6 +27,7 @@ else
  apt-get update -y; apt-get install -y temurin-21-jre
 fi
 id mmanager >/dev/null 2>&1 || useradd --system --home-dir /var/lib/mmanager --create-home --shell /usr/sbin/nologin mmanager
+usermod -aG systemd-journal mmanager
 install -d -o root -g mmanager -m 0750 /etc/mmanager
 install -d -o mmanager -g mmanager -m 0750 /var/lib/mmanager/servers /var/lib/mmanager/backups /var/log/mmanager
 # install -d does not change permissions on an existing directory; repair both ancestors on upgrades.
@@ -74,6 +75,19 @@ chown root:mmanager /etc/mmanager/web.env; chmod 0640 /etc/mmanager/web.env
 OLD=""; [[ -L /opt/mmanager/current ]] && OLD=$(readlink -f /opt/mmanager/current)
 ln -sfn "$RELEASE" /opt/mmanager/current.next; mv -Tf /opt/mmanager/current.next /opt/mmanager/current
 ln -sfn /opt/mmanager/current/venv/bin/Mmanager /usr/local/bin/Mmanager
+install -d -m 0755 /etc/polkit-1/rules.d
+cat >/etc/polkit-1/rules.d/50-mmanager.rules <<'POLKIT'
+polkit.addRule(function(action, subject) {
+    if (subject.user == "mmanager" &&
+        action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") &&
+        /^mmanager-mc@[A-Za-z0-9_-]+\.service$/.test(action.lookup("unit")) &&
+        ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0) {
+        return polkit.Result.YES;
+    }
+});
+POLKIT
+chmod 0644 /etc/polkit-1/rules.d/50-mmanager.rules
 cat >/etc/sudoers.d/mmanager <<'SUDO'
 mmanager ALL=(root) NOPASSWD: /usr/bin/systemctl start mmanager-mc@*.service, /usr/bin/systemctl stop mmanager-mc@*.service, /usr/bin/systemctl restart mmanager-mc@*.service, /usr/bin/systemctl is-active mmanager-mc@*.service, /usr/bin/systemctl is-active --quiet mmanager-mc@*.service, /usr/bin/systemctl show mmanager-mc@*.service --property=MainPID --value, /usr/bin/journalctl -u mmanager-mc@*.service --no-pager -o cat -n *
 SUDO
