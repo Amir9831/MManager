@@ -1,4 +1,4 @@
-import json,re,secrets,shutil,subprocess,tarfile,urllib.request,uuid,os,zipfile
+import json,re,secrets,shutil,subprocess,tarfile,urllib.request,uuid,os,zipfile,stat
 from pathlib import Path
 from . import store,settings
 from .ports import choose_port
@@ -349,8 +349,12 @@ def _safe_extract_bedrock(archive, destination):
         for member in zf.infolist():
             name = member.filename.replace("\\\\", "/")
             parts = Path(name).parts
+            mode = (member.external_attr >> 16) & 0xFFFF
+            file_type = stat.S_IFMT(mode)
             if name.startswith("/") or ".." in parts or (parts and ":" in parts[0]):
                 raise ManagerError("GM-232: Unsafe Bedrock archive member")
+            if stat.S_ISLNK(mode) or file_type not in (0, stat.S_IFREG, stat.S_IFDIR):
+                raise ManagerError("GM-232: Unsupported Bedrock archive member type")
         zf.extractall(destination)
     if not (destination / "bedrock_server").is_file():
         raise ManagerError("GM-217: Bedrock archive has no server binary")
