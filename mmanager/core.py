@@ -594,18 +594,24 @@ def delete_server(sid, confirm=False):
         raise ManagerError("GM-251: Refusing to delete a server with an invalid registry name")
 
     servers_root = settings.SERVERS.resolve()
-    root = Path(item["directory"]).resolve()
+    raw_root = Path(item["directory"])
+    if raw_root.is_symlink():
+        raise ManagerError("GM-252: Refusing to delete a symlinked server directory")
+    root = raw_root.resolve()
     expected = (servers_root / name).resolve()
     if root != expected or root.parent != servers_root or root == servers_root:
         raise ManagerError("GM-252: Refusing to delete a server directory outside the managed server root")
-    if not root.is_dir() or root.is_symlink():
+    if not root.is_dir():
         raise ManagerError("GM-253: Server directory is missing or is not a safe directory")
 
     backups_root = settings.BACKUPS.resolve()
     backup_paths = []
     for backup in store.list_backups(sid):
-        path = Path(backup["filename"]).resolve()
-        if path.parent != backups_root or not path.is_file() or path.is_symlink():
+        raw_path = Path(backup["filename"])
+        if raw_path.is_symlink():
+            raise ManagerError("GM-254: Refusing deletion because a registered backup is a symlink")
+        path = raw_path.resolve()
+        if path.parent != backups_root or not path.is_file():
             raise ManagerError("GM-254: Refusing deletion because a registered backup is missing or outside the managed backup directory")
         backup_paths.append(path)
 
