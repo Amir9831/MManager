@@ -515,3 +515,83 @@ def remove_plugin(sid, filename):
     if not target.is_file() or target.is_symlink(): raise ManagerError("Plugin file not found.")
     target.unlink()
     return {"removed":name}
+
+
+def geyser_settings(sid):
+    item = _server(sid)
+    if item["edition"] != "crossplay":
+        raise ManagerError("Geyser settings are available only for Cross-play servers.")
+    import yaml
+    path = Path(item["directory"]) / "plugins" / "Geyser-Spigot" / "config.yml"
+    if not path.is_file():
+        raise ManagerError("Geyser config.yml is missing. Reinstall or repair the Cross-play runtime.")
+    try:
+        config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        raise ManagerError("Cannot read Geyser configuration: " + str(exc)[:200])
+    bedrock = config.get("bedrock") if isinstance(config.get("bedrock"), dict) else {}
+    remote = config.get("remote") if isinstance(config.get("remote"), dict) else {}
+    return {
+        "bedrock_port": int(bedrock.get("port", 19132)),
+        "remote_address": str(remote.get("address", "auto")),
+        "remote_port": int(remote.get("port", item.get("java_port") or 25565)),
+        "auth_type": str(remote.get("auth-type", "online")),
+        "passthrough_motd": bool(config.get("passthrough-motd", True)),
+        "passthrough_player_counts": bool(config.get("passthrough-player-counts", True)),
+        "debug_mode": bool(config.get("debug-mode", False)),
+    }
+
+
+def update_geyser_settings(sid, changes):
+    item = _server(sid)
+    if item["edition"] != "crossplay":
+        raise ManagerError("Geyser settings are available only for Cross-play servers.")
+    allowed = {"bedrock_port", "remote_address", "remote_port", "auth_type",
+               "passthrough_motd", "passthrough_player_counts", "debug_mode"}
+    if not isinstance(changes, dict) or not changes or set(changes) - allowed:
+        raise ManagerError("Invalid Geyser settings payload.")
+    import yaml
+    path = Path(item["directory"]) / "plugins" / "Geyser-Spigot" / "config.yml"
+    if not path.is_file():
+        raise ManagerError("Geyser config.yml is missing. Reinstall or repair the Cross-play runtime.")
+    try:
+        config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        raise ManagerError("Cannot read Geyser configuration: " + str(exc)[:200])
+    if not isinstance(config, dict):
+        raise ManagerError("Geyser configuration root must be a YAML mapping.")
+    bedrock = config.setdefault("bedrock", {})
+    remote = config.setdefault("remote", {})
+    if not isinstance(bedrock, dict) or not isinstance(remote, dict):
+        raise ManagerError("Geyser bedrock/remote sections are invalid.")
+    if "bedrock_port" in changes:
+        port = int(changes["bedrock_port"])
+        if not 1 <= port <= 65535:
+            raise ManagerError("Bedrock UDP port must be between 1 and 65535.")
+        bedrock["port"] = port
+    if "remote_port" in changes:
+        port = int(changes["remote_port"])
+        if not 1 <= port <= 65535:
+            raise ManagerError("Java remote port must be between 1 and 65535.")
+        remote["port"] = port
+    if "remote_address" in changes:
+        address = str(changes["remote_address"]).strip()
+        if not address or len(address) > 253 or not re.fullmatch(r"[A-Za-z0-9._:-]+", address):
+            raise ManagerError("Invalid Geyser remote address.")
+        remote["address"] = address
+    if "auth_type" in changes:
+        auth_type = str(changes["auth_type"]).lower()
+        if auth_type not in {"online", "floodgate"}:
+            raise ManagerError("Geyser auth type must be online or floodgate.")
+        remote["auth-type"] = auth_type
+    for key, yaml_key in (("passthrough_motd", "passthrough-motd"),
+                          ("passthrough_player_counts", "passthrough-player-counts"),
+                          ("debug_mode", "debug-mode")):
+        if key in changes:
+            if not isinstance(changes[key], bool):
+                raise ManagerError(key + " must be a boolean.")
+            config[yaml_key] = changes[key]
+    temp = path.with_suffix(".yml.tmp")
+    temp.write_text(yaml.safe_dump(config, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    temp.replace(path)
+    return {"saved": True, "restart_required": True, **geyser_settings(sid)}
