@@ -69,7 +69,7 @@ OLD=""; [[ -L /opt/mmanager/current ]] && OLD=$(readlink -f /opt/mmanager/curren
 ln -sfn "$RELEASE" /opt/mmanager/current.next; mv -Tf /opt/mmanager/current.next /opt/mmanager/current
 ln -sfn /opt/mmanager/current/venv/bin/Mmanager /usr/local/bin/Mmanager
 cat >/etc/sudoers.d/mmanager <<'SUDO'
-mmanager ALL=(root) NOPASSWD: /usr/bin/systemctl start mmanager-mc@*.service, /usr/bin/systemctl stop mmanager-mc@*.service, /usr/bin/systemctl restart mmanager-mc@*.service, /usr/bin/systemctl is-active --quiet mmanager-mc@*.service, /usr/bin/journalctl -u mmanager-mc@*.service -n * --no-pager -o cat
+mmanager ALL=(root) NOPASSWD: /usr/bin/systemctl start mmanager-mc@*.service, /usr/bin/systemctl stop mmanager-mc@*.service, /usr/bin/systemctl restart mmanager-mc@*.service, /usr/bin/systemctl is-active mmanager-mc@*.service, /usr/bin/systemctl is-active --quiet mmanager-mc@*.service, /usr/bin/journalctl -u mmanager-mc@*.service -n * --no-pager -o cat
 SUDO
 chmod 0440 /etc/sudoers.d/mmanager; visudo -cf /etc/sudoers.d/mmanager >/dev/null
 for unit in mmanager-core.service mmanager-web.service mmanager-mc@.service; do install -o root -g root -m 0644 "/opt/mmanager/current/systemd/$unit" "/etc/systemd/system/$unit"; done
@@ -96,7 +96,7 @@ if [[ -f /root/mmanager-admin-credentials.txt ]]; then
  python3 - "$PANEL_URL" <<'PY'
 import pathlib,sys
 p=pathlib.Path("/root/mmanager-admin-credentials.txt")
-lines=[x for x in p.read_text().splitlines() if not x.startswith("Panel:") and not x.startswith("SSH:")]
+lines=[x for x in p.read_text().splitlines() if not x.startswith("Username:") and not x.startswith("Panel:") and not x.startswith("SSH:")]
 lines.append("Panel: "+sys.argv[1])
 p.write_text("\n".join(lines)+"\n")
 p.chmod(0o600)
