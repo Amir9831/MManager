@@ -1,4 +1,5 @@
 import pytest
+import yaml
 from pathlib import Path
 from mmanager import core,store,settings
 def setup(monkeypatch,tmp_path):
@@ -11,16 +12,31 @@ def setup(monkeypatch,tmp_path):
 def test_create_and_eula(monkeypatch,tmp_path):
  setup(monkeypatch,tmp_path);x=core.create_server("survival","java","1.21.4","vanilla",True)
  assert store.get_server(x["id"])["java_port"]==25565
+ props=(tmp_path/"servers"/"survival"/"server.properties").read_text()
+ assert "server-port=25565" in props
+ assert "query.port=25565" in props
+ assert "server-ip=" in props
+ assert "enable-query=false" in props
+ assert "enable-rcon=false" in props
  assert (tmp_path/"servers"/"survival"/"eula.txt").read_text()=="eula=true\n"
 def test_eula_required(monkeypatch,tmp_path):
  setup(monkeypatch,tmp_path)
  with pytest.raises(core.ManagerError,match="GM-106"):core.create_server("survival","java","1.21.4")
 def test_invalid_name():
  with pytest.raises(core.ManagerError,match="GM-101"):core.create_server("../x","java","1.21.4","vanilla",True)
-def test_crossplay_allocates_udp_and_config(monkeypatch,tmp_path):
+def test_crossplay_allocates_tcp_udp_and_config(monkeypatch,tmp_path):
  setup(monkeypatch,tmp_path);x=core.create_server("cross","crossplay","1.21.4","paper",True)
  assert x["bedrock_port"]==19132
- assert "port: 19132" in (tmp_path/"servers"/"cross"/"plugins"/"Geyser-Spigot"/"config.yml").read_text()
+ assert x["bedrock_port"] != x["java_port"]
+ props=(tmp_path/"servers"/"cross"/"server.properties").read_text()
+ assert "server-port=25565" in props and "query.port=25565" in props
+ geyser=yaml.safe_load((tmp_path/"servers"/"cross"/"plugins"/"Geyser-Spigot"/"config.yml").read_text())
+ assert geyser["bedrock"]["address"]=="0.0.0.0"
+ assert geyser["bedrock"]["port"]==x["bedrock_port"]
+ assert geyser["bedrock"]["transport"]=="nethernet"
+ assert geyser["remote"]["address"]=="127.0.0.1"
+ assert geyser["remote"]["port"]==x["java_port"]
+ assert geyser["remote"]["auth-type"]=="floodgate"
 
 def test_bedrock_release_catalog(monkeypatch):
     from mmanager import core
