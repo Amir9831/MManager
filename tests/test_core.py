@@ -199,3 +199,123 @@ def test_other_downloads_keep_mmanager_user_agent(monkeypatch, tmp_path):
     monkeypatch.setattr(core.urllib.request, "urlopen", fake_urlopen)
     core._download("https://example.com/server.jar", tmp_path / "server.jar")
     assert seen == ["MManager/0.2 (https://github.com/Amir9831/MManager)"]
+
+
+
+def test_bedrock_udp_allocation_does_not_reserve_java_tcp_ports(monkeypatch, tmp_path):
+    setup(monkeypatch, tmp_path)
+    with store.connect() as db:
+        db.execute(
+            "INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory,eula_accepted) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            ("java-id", "javaexisting", "java", "vanilla", "1.21.4", 19132, None,
+             str(tmp_path / "servers" / "javaexisting"), 1),
+        )
+    calls = []
+
+    def choose(preferred, protocol, reserved=None, **kwargs):
+        calls.append((preferred, protocol, set(reserved or set())))
+        return preferred
+
+    monkeypatch.setattr(core, "choose_port", choose)
+    item = core.create_server("bedrockudp", "bedrock", "1.26.63", "bedrock", True)
+    assert item["java_port"] == 19132
+    assert calls == [(19132, "udp", set())]
+
+
+def test_bedrock_status_detects_wrong_udp_port(monkeypatch, tmp_path):
+    setup(monkeypatch, tmp_path)
+    item = {
+        "id": "status-id", "name": "minecraft", "edition": "bedrock",
+        "software": "bedrock", "version": "1.26.63", "java_port": 19132,
+        "bedrock_port": None, "directory": str(tmp_path / "servers" / "minecraft"),
+    }
+    with store.connect() as db:
+        db.execute(
+            "INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory,eula_accepted) "
+            "VALUES(:id,:name,:edition,:software,:version,:java_port,:bedrock_port,:directory,1)",
+            item,
+        )
+
+    class Result:
+        returncode = 0
+        stdout = "UNCONN 0 0 *:7551 *:* users:((\"bedrock_server\",pid=8907,fd=18))\\n"
+        stderr = ""
+
+    monkeypatch.setattr(core, "_active", lambda _: True)
+    monkeypatch.setattr(core.shutil, "which", lambda _: "/usr/bin/ss")
+
+    def fake_run(args, **kwargs):
+        if args[0] == "/usr/bin/systemctl":
+            return type("PidResult", (), {"returncode": 0, "stdout": "8907", "stderr": ""})()
+        return Result()
+
+    monkeypatch.setattr(core.subprocess, "run", fake_run)
+
+    status = core.server_status("status-id")
+    assert status["status"] == "degraded"
+    assert status["health"] == "degraded"
+    assert status["expected"] == [{"protocol": "udp", "port": 19132}]
+    assert "UDP/19132" in status["error"]
+
+
+
+def test_crossplay_udp_allocation_reserves_existing_bedrock_udp(monkeypatch, tmp_path):
+    setup(monkeypatch, tmp_path)
+    with store.connect() as db:
+        db.execute(
+            "INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory,eula_accepted) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            ("bedrock-id", "bedrockexisting", "bedrock", "bedrock", "1.26.63", 19132, None,
+             str(tmp_path / "servers" / "bedrockexisting"), 1),
+        )
+    item = core.create_server("crossudp", "crossplay", "1.21.4", "paper", True)
+    assert item["bedrock_port"] == 19133
+
+
+def test_tcp_and_udp_can_share_same_numeric_port(monkeypatch, tmp_path):
+    setup(monkeypatch, tmp_path)
+    with store.connect() as db:
+        db.execute(
+            "INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory,eula_accepted) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            ("java-id", "javaexisting", "java", "vanilla", "1.21.4", 19132, None,
+             str(tmp_path / "servers" / "javaexisting"), 1),
+        )
+    item = core.create_server("bedrockshare", "bedrock", "1.26.63", "bedrock", True)
+    assert item["java_port"] == 19132
+
+
+
+def test_store_migration_keeps_core_available_with_legacy_udp_collision(monkeypatch, tmp_path):
+    import sqlite3
+
+    data = tmp_path / "legacy-data"
+    data.mkdir()
+    db_path = data / "legacy.db"
+    monkeypatch.setattr(store, "DATA", data)
+    monkeypatch.setattr(store, "DB", db_path)
+    db = sqlite3.connect(db_path)
+    db.execute(
+        "CREATE TABLE servers(id TEXT PRIMARY KEY,name TEXT UNIQUE NOT NULL,edition TEXT NOT NULL,"
+        "software TEXT NOT NULL DEFAULT 'vanilla',version TEXT NOT NULL,java_port INTEGER,"
+        "bedrock_port INTEGER,directory TEXT NOT NULL,eula_accepted INTEGER NOT NULL DEFAULT 0,"
+        "created_at TEXT DEFAULT CURRENT_TIMESTAMP)"
+    )
+    db.execute(
+        "INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory) "
+        "VALUES('b','bedrock','bedrock','bedrock','1.26.63',19132,NULL,'/tmp/bedrock')"
+    )
+    db.execute(
+        "INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory) "
+        "VALUES('c','crossplay','crossplay','paper','1.21.4',25565,19132,'/tmp/crossplay')"
+    )
+    db.execute("CREATE UNIQUE INDEX ux_servers_java_port ON servers(java_port) WHERE java_port IS NOT NULL")
+    db.execute("CREATE UNIQUE INDEX ux_servers_bedrock_port ON servers(bedrock_port) WHERE bedrock_port IS NOT NULL")
+    db.commit()
+    db.close()
+
+    with store.connect() as migrated:
+        assert migrated.execute("SELECT COUNT(*) FROM servers").fetchone()[0] == 2
+        indexes = {row[1] for row in migrated.execute("PRAGMA index_list(servers)")}
+        assert "ix_servers_udp_port" in indexes

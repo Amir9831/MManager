@@ -12,8 +12,17 @@ def connect():
   cols={r[1] for r in db.execute("PRAGMA table_info(servers)")}
   for name,definition in (("software","TEXT NOT NULL DEFAULT 'vanilla'"),("eula_accepted","INTEGER NOT NULL DEFAULT 0"),("bedrock_port","INTEGER")):
    if name not in cols: db.execute(f"ALTER TABLE servers ADD COLUMN {name} {definition}")
-  db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_servers_java_port ON servers(java_port) WHERE java_port IS NOT NULL")
+  # TCP and UDP may legally use the same numeric port; Bedrock stores its UDP
+  # port in java_port for legacy API compatibility, while cross-play uses bedrock_port.
+  db.execute("DROP INDEX IF EXISTS ux_servers_java_port")
+  db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_servers_java_tcp_port ON servers(java_port) WHERE java_port IS NOT NULL AND edition!='bedrock'")
   db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_servers_bedrock_port ON servers(bedrock_port) WHERE bedrock_port IS NOT NULL")
+  try:
+   db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_servers_udp_port ON servers(CASE WHEN edition='bedrock' THEN java_port ELSE bedrock_port END) WHERE (edition='bedrock' AND java_port IS NOT NULL) OR bedrock_port IS NOT NULL")
+  except sqlite3.IntegrityError:
+   # A pre-existing release may already contain a Bedrock/cross-play UDP collision.
+   # Do not make Core unavailable during migration; new allocations still check both fields.
+   db.execute("CREATE INDEX IF NOT EXISTS ix_servers_udp_port ON servers(CASE WHEN edition='bedrock' THEN java_port ELSE bedrock_port END)")
   db.execute("""CREATE TABLE IF NOT EXISTS backups(id TEXT PRIMARY KEY,server_id TEXT NOT NULL,filename TEXT NOT NULL,size INTEGER NOT NULL,created_at TEXT DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(server_id) REFERENCES servers(id) ON DELETE CASCADE)""")
   yield db
  finally:db.close()
