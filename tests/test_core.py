@@ -99,3 +99,53 @@ def test_backup_path_rejects_files_outside_backup_directory(monkeypatch,tmp_path
     store.add_backup({"id":bid,"server_id":item["id"],"filename":str(outside),"size":outside.stat().st_size})
     with pytest.raises(core.ManagerError,match="GM-236"):
         core.backup_file(item["id"],bid)
+
+
+def test_switch_java_to_crossplay_preserves_world_and_updates_registry(monkeypatch,tmp_path):
+    setup(monkeypatch,tmp_path)
+    item=core.create_server("switchcp","java","1.21.4","vanilla",True)
+    root=Path(item["directory"])
+    (root/"world").mkdir()
+    (root/"world"/"level.dat").write_bytes(b"world")
+    monkeypatch.setattr(core,"_active",lambda item:False)
+    monkeypatch.setattr(core,"_systemctl",lambda action,item:None)
+    monkeypatch.setattr(core,"create_backup",lambda sid:{"id":"backup-switch","filename":"backup.tar.gz"})
+    def runtime(stage,edition,software,version,java_port,bedrock_port):
+        (stage/"server.jar").write_bytes(b"new-runtime")
+        if edition=="crossplay":
+            plugin=stage/"plugins"/"Geyser-Spigot"
+            plugin.mkdir(parents=True,exist_ok=True)
+            (plugin/"config.yml").write_text("port: "+str(bedrock_port)+"\n")
+        (stage/"server.properties").write_text("server-port="+str(java_port)+"\n")
+        (stage/"run.sh").write_text("#!/bin/sh\n")
+    monkeypatch.setattr(core,"_write_server_runtime",runtime)
+    result=core.switch_server(item["id"],"crossplay","paper","1.21.4",False)
+    saved=store.get_server(item["id"])
+    assert result["switched"] is True
+    assert saved["edition"]=="crossplay" and saved["software"]=="paper"
+    assert saved["bedrock_port"]==19132
+    assert (root/"world"/"level.dat").read_bytes()==b"world"
+
+
+def test_switch_java_to_bedrock_archives_old_world_and_uses_new_runtime(monkeypatch,tmp_path):
+    setup(monkeypatch,tmp_path)
+    item=core.create_server("switchbd","java","1.21.4","vanilla",True)
+    root=Path(item["directory"])
+    (root/"world").mkdir()
+    (root/"world"/"level.dat").write_bytes(b"java-world")
+    monkeypatch.setattr(core,"_active",lambda item:False)
+    monkeypatch.setattr(core,"_systemctl",lambda action,item:None)
+    monkeypatch.setattr(core,"create_backup",lambda sid:{"id":"backup-switch","filename":"backup.tar.gz"})
+    def runtime(stage,edition,software,version,java_port,bedrock_port):
+        (stage/"bedrock_server").write_bytes(b"bedrock-runtime")
+        (stage/"server.properties").write_text("server-port="+str(java_port)+"\n")
+        (stage/"run.sh").write_text("#!/bin/sh\n")
+    monkeypatch.setattr(core,"_write_server_runtime",runtime)
+    result=core.switch_server(item["id"],"bedrock","bedrock","1.26.63",True)
+    saved=store.get_server(item["id"])
+    archives=list(root.parent.glob("switchbd.archived-*"))
+    assert result["world_archived"] is True
+    assert saved["edition"]=="bedrock" and saved["software"]=="bedrock"
+    assert (root/"bedrock_server").exists()
+    assert not (root/"world").exists()
+    assert archives and (archives[0]/"world"/"level.dat").read_bytes()==b"java-world"
