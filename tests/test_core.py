@@ -71,3 +71,31 @@ def test_server_logs_do_not_invoke_sudo(monkeypatch, tmp_path):
  assert core.server_logs(item["id"],50)=="Minecraft started"
  assert calls[0][0]=="/usr/bin/journalctl"
  assert "sudo" not in calls[0]
+
+
+def test_backup_download_and_delete_are_scoped_and_safe(monkeypatch,tmp_path):
+    setup(monkeypatch,tmp_path)
+    item=core.create_server("backupops","java","1.21.4","vanilla",True)
+    monkeypatch.setattr(core.settings,"BACKUPS",tmp_path/"backups")
+    core.settings.BACKUPS.mkdir()
+    archive=core.settings.BACKUPS/"backupops-test.tar.gz"
+    archive.write_bytes(b"backup-data")
+    bid="backup-test-id"
+    store.add_backup({"id":bid,"server_id":item["id"],"filename":str(archive),"size":archive.stat().st_size})
+    assert core.backup_file(item["id"],bid)==archive.resolve()
+    assert core.delete_backup(item["id"],bid)=={"deleted":True,"id":bid}
+    assert not archive.exists()
+    assert store.get_backup(item["id"],bid) is None
+
+
+def test_backup_path_rejects_files_outside_backup_directory(monkeypatch,tmp_path):
+    setup(monkeypatch,tmp_path)
+    item=core.create_server("backupunsafe","java","1.21.4","vanilla",True)
+    monkeypatch.setattr(core.settings,"BACKUPS",tmp_path/"backups")
+    core.settings.BACKUPS.mkdir()
+    outside=tmp_path/"outside.tar.gz"
+    outside.write_bytes(b"not a backup")
+    bid="outside-id"
+    store.add_backup({"id":bid,"server_id":item["id"],"filename":str(outside),"size":outside.stat().st_size})
+    with pytest.raises(core.ManagerError,match="GM-236"):
+        core.backup_file(item["id"],bid)
