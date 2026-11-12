@@ -52,6 +52,13 @@ PY
  { echo "MManager administrator"; echo "Username: admin"; echo "Password: $ADMIN_PASS"; echo "Panel: http://127.0.0.1:8766"; echo "SSH: ssh -L 8766:127.0.0.1:8766 -L 8765:127.0.0.1:8765 USER@SERVER"; } >/root/mmanager-admin-credentials.txt
  chmod 0600 /root/mmanager-admin-credentials.txt; say "Admin password saved to /root/mmanager-admin-credentials.txt"
 else say "Existing administrator credentials preserved"; fi
+# Generate persistent public-panel settings without overwriting existing values.
+if [[ ! -s /etc/mmanager/web.json ]]; then
+ PANEL_PATH=$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')
+ printf '{"path":"%s","port":8766}\\n' "$PANEL_PATH" >/etc/mmanager/web.json
+ chmod 0640 /etc/mmanager/web.json
+fi
+chown root:mmanager /etc/mmanager/web.json; chmod 0640 /etc/mmanager/web.json
 OLD=""; [[ -L /opt/mmanager/current ]] && OLD=$(readlink -f /opt/mmanager/current)
 ln -sfn "$RELEASE" /opt/mmanager/current.next; mv -Tf /opt/mmanager/current.next /opt/mmanager/current
 ln -sfn /opt/mmanager/current/venv/bin/Mmanager /usr/local/bin/Mmanager
