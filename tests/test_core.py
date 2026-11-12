@@ -170,3 +170,32 @@ def test_active_still_rejects_unknown_systemd_unit(monkeypatch):
     monkeypatch.setattr(core.subprocess,"run",lambda *args,**kwargs:Result())
     with pytest.raises(core.ManagerError,match="GM-222"):
         core._active({"name":"missing-server"})
+
+
+def test_bedrock_cdn_download_uses_browser_user_agent(monkeypatch, tmp_path):
+    import io
+    seen = []
+    payload = b"x" * 2048
+
+    def fake_urlopen(request, timeout=60):
+        seen.append(request.get_header("User-agent"))
+        return io.BytesIO(payload)
+
+    monkeypatch.setattr(core.urllib.request, "urlopen", fake_urlopen)
+    target = tmp_path / "bedrock.zip"
+    core._download("https://www.minecraft.net/bedrockdedicatedserver/bin-linux/test.zip", target)
+    assert seen == ["Mozilla/5.0"]
+    assert target.read_bytes() == payload
+
+
+def test_other_downloads_keep_mmanager_user_agent(monkeypatch, tmp_path):
+    import io
+    seen = []
+
+    def fake_urlopen(request, timeout=60):
+        seen.append(request.get_header("User-agent"))
+        return io.BytesIO(b"x" * 2048)
+
+    monkeypatch.setattr(core.urllib.request, "urlopen", fake_urlopen)
+    core._download("https://example.com/server.jar", tmp_path / "server.jar")
+    assert seen == ["MManager/0.2 (https://github.com/Amir9831/MManager)"]
