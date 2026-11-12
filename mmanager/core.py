@@ -72,7 +72,7 @@ def update_server_settings(sid,changes):
  item=store.get_server(sid)
  if not item: raise ManagerError("GM-108: Server not found")
  for k,v in changes.items():
-  if not re.fullmatch(r"[a-z0-9_.-]{1,64}",k) or not re.fullmatch(r"[^\\r\\n]{0,512}",str(v)): raise ManagerError("GM-240: Invalid server property: "+str(k))
+  if not re.fullmatch(r"[a-z0-9_.-]{1,64}",k) or not re.fullmatch(r"[^\r\n]{0,512}",str(v)): raise ManagerError("GM-240: Invalid server property: "+str(k))
  path=Path(item["directory"])/"server.properties"; current=server_settings(sid)["settings"]
  current.update({k:str(v) for k,v in changes.items()})
  tmp=path.with_suffix(".properties.tmp")
