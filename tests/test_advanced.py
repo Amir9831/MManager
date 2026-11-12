@@ -1,3 +1,4 @@
+import json
 import pytest
 from pathlib import Path
 from mmanager import advanced,core,settings,store
