@@ -96,5 +96,6 @@ PY
 fi
 echo "Panel: $PANEL_URL"
 echo "Credentials: /root/mmanager-admin-credentials.txt"
+cat /root/mmanager-admin-credentials.txt
 echo "Manage panel path, password and port from the Mmanager CLI (option 7)."
 echo "Allow TCP port $PANEL_PORT in your VPS/cloud firewall."
