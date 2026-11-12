@@ -137,7 +137,9 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
    for project,filename in (("geyser","Geyser-Spigot.jar"),("floodgate","floodgate-spigot.jar")):
     _download(f"https://download.geysermc.org/v2/projects/{project}/versions/latest/builds/latest/downloads/spigot",plugins/filename)
    geyser=plugins/"Geyser-Spigot";geyser.mkdir(exist_ok=True)
-   (geyser/"config.yml").write_text("bedrock:\n  address: 0.0.0.0\n  port: "+str(item["bedrock_port"])+"\n  clone-remote-port: false\nremote:\n  address: auto\n  port: "+str(item["java_port"])+"\n  auth-type: floodgate\n")
+   geyser_config=(Path(__file__).parent/"templates"/"crossplay-geyser.yml").read_text()
+   geyser_config=geyser_config.replace("port: 19132","port: "+str(item["bedrock_port"])).replace("port: 25565","port: "+str(item["java_port"]))
+   (geyser/"config.yml").write_text(geyser_config)
   return item
  except Exception:
   with store.connect() as db:db.execute("DELETE FROM servers WHERE id=?",(item["id"],))
