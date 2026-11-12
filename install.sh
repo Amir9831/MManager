@@ -36,6 +36,10 @@ python3 -m venv "$RELEASE/venv"
 "$RELEASE/venv/bin/pip" install --upgrade pip
 "$RELEASE/venv/bin/pip" install "$RELEASE"
 "$RELEASE/venv/bin/python" -m compileall -q "$RELEASE/mmanager"
+# Services run as mmanager, while release files remain root-owned and immutable.
+# Give the service group read/traverse access to the complete release tree.
+chgrp -R mmanager "$RELEASE"
+chmod -R g+rX "$RELEASE"
 if [[ ! -s /etc/mmanager/auth.json ]]; then
  ADMIN_PASS=$(python3 -c 'import secrets;print(secrets.token_urlsafe(18))'); API_TOKEN=$(python3 -c 'import secrets;print(secrets.token_urlsafe(48))'); export ADMIN_PASS
  "$RELEASE/venv/bin/python" - <<'PY'
