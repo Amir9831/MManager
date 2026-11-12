@@ -501,10 +501,27 @@ def _configure_bedrock_properties(path, port, version):
         _set_property_file(path, key, str(value))
     if _bedrock_uses_nethernet(version):
         _set_property_file(path, "transport", "nethernet")
-        _set_property_file(path, "server-udp-ports", BEDROCK_UDP_PORT_RANGE)
+        # Let BDS select ephemeral UDP ports by default. Mojang documents
+        # server-udp-ports as an opt-in for restrictive firewalls/NAT only.
+        # Remove only MManager's former default; preserve an explicit
+        # administrator-supplied mapping.
+        if _get_property_file(path, "server-udp-ports") == BEDROCK_UDP_PORT_RANGE:
+            _remove_property_file(path, "server-udp-ports")
     else:
         _remove_property_file(path, "transport")
         _remove_property_file(path, "server-udp-ports")
+
+
+def _get_property_file(path, key):
+    path = Path(path)
+    if not path.exists():
+        return None
+    for row in path.read_text(errors="replace").splitlines():
+        if row and not row.lstrip().startswith("#") and "=" in row:
+            name, value = row.split("=", 1)
+            if name.strip() == key:
+                return value.strip()
+    return None
 
 
 def _remove_property_file(path, key):

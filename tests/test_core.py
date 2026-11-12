@@ -80,7 +80,7 @@ def test_bedrock_install_uses_verified_zip(monkeypatch,tmp_path):
     assert "enable-lan-visibility=false" in properties
     assert "enable-lan-broadcast=false" in properties
     assert "transport=nethernet" in properties
-    assert "server-udp-ports=49152-49200" in properties
+    assert "server-udp-ports=" not in properties
 
 
 def test_server_logs_read_rotated_file_tail_without_subprocess(monkeypatch, tmp_path):
@@ -272,7 +272,7 @@ def test_bedrock_update_reapplies_allocated_udp_ports(monkeypatch, tmp_path):
     assert props["enable-lan-visibility"] == "false"
     assert props["enable-lan-broadcast"] == "false"
     assert props["transport"] == "nethernet"
-    assert props["server-udp-ports"] == "49152-49200"
+    assert "server-udp-ports" not in props
     assert props["server-name"] == "Keep me"
 
 
@@ -352,7 +352,7 @@ def test_modern_bedrock_uses_tcp_namespace_and_nethernet(monkeypatch, tmp_path):
     props = core.server_settings(bedrock["id"])["settings"]
     assert props["server-port"] == "19133"
     assert props["transport"] == "nethernet"
-    assert props["server-udp-ports"] == "49152-49200"
+    assert "server-udp-ports" not in props
 
 
 def test_start_repairs_existing_bedrock_nethernet_properties(monkeypatch, tmp_path):
@@ -376,5 +376,26 @@ def test_start_repairs_existing_bedrock_nethernet_properties(monkeypatch, tmp_pa
     assert result == {"ok": True, "action": "start"}
     assert calls == [("start", "migratebedrock")]
     assert props["transport"] == "nethernet"
-    assert props["server-udp-ports"] == "49152-49200"
+    assert "server-udp-ports" not in props
     assert props["server-port"] == "19132"
+
+    
+def test_bedrock_nethernet_preserves_explicit_udp_mapping_but_removes_old_default(tmp_path):
+    path = tmp_path / "server.properties"
+    path.write_text(
+        "server-port=19132\\n"
+        "transport=nethernet\\n"
+        "server-udp-ports=49152-49200\\n"
+    )
+    core._configure_bedrock_properties(path, 19132, "1.26.63")
+    props = path.read_text()
+    assert "server-udp-ports=" not in props
+
+    path.write_text(
+        "server-port=19132\\n"
+        "transport=nethernet\\n"
+        "server-udp-ports=203.0.113.10:49152:49152\\n"
+    )
+    core._configure_bedrock_properties(path, 19132, "1.26.63")
+    props = path.read_text()
+    assert "server-udp-ports=203.0.113.10:49152:49152" in props
