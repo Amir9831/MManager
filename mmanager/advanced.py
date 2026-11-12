@@ -109,22 +109,30 @@ def _proc_cpu_ticks(raw):
     return int(fields[11]) + int(fields[12])
 
 
+def _find_server_pid(item):
+    """Find the Minecraft process owned by mmanager without privileged systemctl/sudo."""
+    expected = Path(item["directory"]).resolve()
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        proc = Path("/proc") / entry.name
+        try:
+            if proc.stat().st_uid != os.geteuid():
+                continue
+            cwd = Path(os.readlink(proc / "cwd")).resolve()
+            if cwd != expected:
+                continue
+            cmdline = (proc / "cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
+            if "bedrock_server" in cmdline or ("server.jar" in cmdline and "java" in cmdline):
+                return int(entry.name)
+        except (OSError, PermissionError, ProcessLookupError):
+            continue
+    return 0
+
+
 def telemetry(sid):
     item = _server(sid)
-    unit = "mmanager-mc@" + item["name"] + ".service"
-    cmd = ["/usr/bin/systemctl", "show", unit, "--property=MainPID", "--value"]
-    if os.geteuid() != 0:
-        cmd = ["/usr/bin/sudo", "-n", *cmd]
-    try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise ManagerError("Cannot read server process information: " + str(exc))
-    if p.returncode:
-        raise ManagerError("Cannot read server process information: " + (p.stderr.strip() or p.stdout.strip())[:250])
-    try:
-        pid = int(p.stdout.strip())
-    except ValueError:
-        pid = 0
+    pid = _find_server_pid(item)
     if pid <= 0:
         return {"status": "stopped", "cpu_percent": 0.0, "memory_bytes": 0, "memory_percent": 0.0, "pid": None}
     proc = Path("/proc") / str(pid)
@@ -145,17 +153,160 @@ def telemetry(sid):
         mem_total = int(mem_total_match.group(1)) * 1024
         cpu_count = os.cpu_count() or 1
         cpu = 100.0 * cpu_count * max(0, stat2 - stat1) / max(1, total2 - total1)
-        return {
-            "status": "running",
-            "pid": pid,
-            "cpu_percent": round(min(cpu, 100.0 * cpu_count), 1),
-            "memory_bytes": memory,
-            "memory_percent": round(100.0 * memory / max(1, mem_total), 2),
-        }
+        return {"status": "running", "pid": pid,
+                "cpu_percent": round(min(cpu, 100.0 * cpu_count), 1),
+                "memory_bytes": memory,
+                "memory_percent": round(100.0 * memory / max(1, mem_total), 2)}
     except FileNotFoundError:
         return {"status": "stopped", "cpu_percent": 0.0, "memory_bytes": 0, "memory_percent": 0.0, "pid": None}
     except (OSError, AttributeError, ValueError, IndexError) as exc:
         raise ManagerError("Cannot read process telemetry: " + str(exc))
+
+
+def _bedrock_console(item, command):
+    fifo = Path(item["directory"]) / ".mmanager-console.fifo"
+    if not fifo.is_fifo():
+        raise ManagerError("Bedrock console channel is not initialized. Restart the server once after updating MManager.")
+    try:
+        fd = os.open(fifo, os.O_WRONLY | os.O_NONBLOCK)
+        try:
+            os.write(fd, (command + "\n").encode("utf-8"))
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        raise ManagerError("Cannot send command to Bedrock console: " + str(exc))
+    return {"response": "Command sent to Bedrock console. See the Logs tab for command output."}
+
+
+def ensure_bedrock_console(item):
+    """Migrate existing BDS run.sh to an stdin FIFO so the panel can send commands."""
+    root = Path(item["directory"])
+    script = root / "run.sh"
+    current = script.read_text(errors="replace") if script.exists() else ""
+    if ".mmanager-console.fifo" in current:
+        return False
+    fifo = root / ".mmanager-console.fifo"
+    if fifo.exists() and not fifo.is_fifo():
+        raise ManagerError("Refusing to replace a non-FIFO Bedrock console path.")
+    wrapper = ("#!/bin/sh\ncd " + str(root) + "\n"
+               'FIFO=".mmanager-console.fifo"\n'
+               '[ -p "$FIFO" ] || mkfifo "$FIFO"\n'
+               'exec 3<> "$FIFO"\n'
+               'LD_LIBRARY_PATH=. exec ./bedrock_server <&3\n')
+    script.write_text(wrapper)
+    script.chmod(0o750)
+    return True
+
+
+def _read_json(path, default):
+    try:
+        data = json.loads(Path(path).read_text())
+        return data if isinstance(data, list) else default
+    except (OSError, ValueError, TypeError):
+        return default
+
+
+def _bedrock_online(item):
+    try:
+        logs = subprocess.run(
+            ["/usr/bin/journalctl", "--quiet", "-u", "mmanager-mc@" + item["name"] + ".service",
+             "--no-pager", "-o", "cat", "-n", "2000"],
+            capture_output=True, text=True, timeout=10, check=True).stdout
+    except Exception:
+        logs = ""
+    states = {}
+    for line in logs.splitlines():
+        connected = re.search(r"Player connected:\s*(.*?),\s*xuid:\s*([0-9]+)", line, re.I)
+        disconnected = re.search(r"Player disconnected:\s*(.*?),\s*xuid:\s*([0-9]+)", line, re.I)
+        match = connected or disconnected
+        if match:
+            name, xuid = match.group(1).strip(), match.group(2)
+            states[name.lower()] = {"name": name, "xuid": xuid, "online": bool(connected)}
+    return [x for x in states.values() if x["online"]]
+
+
+def players(sid):
+    item = _server(sid)
+    root = Path(item["directory"])
+    online = []
+    raw = ""
+    if item["edition"] == "bedrock":
+        online = _bedrock_online(item)
+    else:
+        try:
+            raw = _rcon(item, "list")
+            match = re.search(r"There are \d+ of a max of \d+ players online:?(.*)", raw, re.I | re.S)
+            if match:
+                online = [{"name": x.strip(), "online": True} for x in match.group(1).split(",") if x.strip()]
+        except ManagerError as exc:
+            raw = str(exc)
+    if item["edition"] == "bedrock":
+        allowlist = _read_json(root / "allowlist.json", [])
+        permissions = _read_json(root / "permissions.json", [])
+        known = {str(x.get("name", "")).lower(): {"name": str(x.get("name", "")), "xuid": str(x.get("xuid", ""))}
+                 for x in allowlist if isinstance(x, dict) and x.get("name")}
+        for x in online:
+            known.setdefault(x["name"].lower(), x)
+        admins = []
+        for entry in permissions:
+            if isinstance(entry, dict) and entry.get("permission") == "operator":
+                xuid = str(entry.get("xuid", ""))
+                player = next((v for v in known.values() if v.get("xuid") == xuid), {"name": xuid, "xuid": xuid})
+                admins.append(player)
+        banned = []
+        offline = [v for k, v in known.items() if k not in {x["name"].lower() for x in online}]
+    else:
+        usercache = _read_json(root / "usercache.json", [])
+        ops = _read_json(root / "ops.json", [])
+        whitelist = _read_json(root / "whitelist.json", [])
+        banned = [{"name": str(x.get("name", "")), "uuid": str(x.get("uuid", ""))}
+                  for x in _read_json(root / "banned-players.json", []) if isinstance(x, dict)]
+        known = {}
+        for entry in usercache + ops + whitelist + banned:
+            if isinstance(entry, dict) and entry.get("name"):
+                known[str(entry["name"]).lower()] = {"name": str(entry["name"]), "uuid": str(entry.get("uuid", ""))}
+        admins = [{"name": str(x.get("name", "")), "uuid": str(x.get("uuid", "")), "level": int(x.get("level", 4))}
+                  for x in ops if isinstance(x, dict) and x.get("name")]
+        online_names = {x["name"].lower() for x in online}
+        offline = [v for k, v in known.items() if k not in online_names]
+    banned_names = {x["name"].lower() for x in banned}
+    for player in online + offline + admins:
+        player["banned"] = player["name"].lower() in banned_names
+    return {"online": online, "offline": offline, "admins": admins, "banned": banned,
+            "raw": raw, "edition": item["edition"], "permission_model": "bedrock" if item["edition"] == "bedrock" else "java"}
+
+
+def moderate(sid, action, player, reason="", permission_level=4):
+    item = _server(sid)
+    player = str(player).strip()
+    if not re.fullmatch(r"[A-Za-z0-9_ .-]{1,32}", player) or player in {".", ".."}:
+        raise ManagerError("Invalid Minecraft player name.")
+    if action not in {"kick", "ban", "pardon", "op", "deop"}:
+        raise ManagerError("Unsupported moderation action.")
+    reason = re.sub(r"[\r\n\0]", " ", str(reason))[:160]
+    if item["edition"] == "bedrock":
+        if action == "op":
+            cmd = 'op "' + player + '"'
+        elif action == "deop":
+            cmd = 'deop "' + player + '"'
+        elif action == "kick":
+            cmd = 'kick "' + player + '"' + (" " + reason if reason else "")
+        elif action in {"ban", "pardon"}:
+            raise ManagerError("Bedrock Dedicated Server has no native player ban list. Use allowlist management to restrict access; this is not the same as a ban.")
+        return _bedrock_console(item, cmd)
+    if action == "op":
+        if not 1 <= int(permission_level) <= 4:
+            raise ManagerError("Java operator level must be between 1 and 4.")
+        command = "op " + player + " " + str(int(permission_level))
+    elif action == "deop":
+        command = "deop " + player
+    elif action == "kick":
+        command = "kick " + player + (" " + reason if reason else "")
+    elif action == "ban":
+        command = "ban " + player + (" " + reason if reason else "")
+    else:
+        command = "pardon " + player
+    return {"action": action, "player": player, "response": _rcon(item, command)}
 
 def plugin_search(query):
     query=str(query).strip()[:100]
