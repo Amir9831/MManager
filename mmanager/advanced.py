@@ -56,7 +56,7 @@ def configure_rcon(sid, enabled, password=None, port=25575):
         raise ManagerError("Set an RCON password of at least 16 characters.")
     from .core import update_server_settings
     changes={"enable-rcon":"true" if enabled else "false","rcon.port":str(int(port)),"rcon.ip":"127.0.0.1"}
-    if enabled: changes["rcon.password"]=password
+    changes["rcon.password"]=password if enabled else ""
     result=update_server_settings(sid,changes)
     return {"enabled":bool(enabled),"port":int(port),"restart_required":True,"saved":True}
 
