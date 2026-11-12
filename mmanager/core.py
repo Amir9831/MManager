@@ -1,4 +1,5 @@
 import json,re,secrets,shutil,subprocess,tarfile,urllib.request,uuid,os,zipfile,stat
+from collections import deque
 from pathlib import Path
 from . import store,settings
 from .ports import choose_port
@@ -168,11 +169,16 @@ def server_logs(sid,lines=100):
  item=store.get_server(sid)
  if not item:raise ManagerError("GM-108: Server not found")
  if not 1<=lines<=500:raise ManagerError("GM-110: Invalid line count")
- cmd=["/usr/bin/journalctl","--quiet","-u",f"mmanager-mc@{item['name']}.service","--no-pager","-o","cat","-n",str(lines)]
- try:p=subprocess.run(cmd,capture_output=True,text=True,timeout=20)
- except (OSError,subprocess.TimeoutExpired) as exc:raise ManagerError("GM-221: Cannot read logs: "+str(exc))
- if p.returncode:raise ManagerError("GM-221: Cannot read logs: "+(p.stderr.strip() or p.stdout.strip())[:300])
- return p.stdout[-50000:]
+ log_path=Path("/var/log/mmanager/servers")/(item["name"]+".log")
+ tail=deque(maxlen=lines)
+ try:
+  with log_path.open("r",errors="replace") as stream:
+   for row in stream:tail.append(row)
+ except FileNotFoundError:
+  return ""
+ except OSError as exc:
+  raise ManagerError("GM-221: Cannot read logs: "+str(exc)[:250])
+ return "".join(tail)[-50000:]
 
 def create_backup(sid):
  item=store.get_server(sid)
