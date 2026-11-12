@@ -224,6 +224,23 @@ def import_backup(sid, fileobj, original_filename):
 def list_backups(sid):
  if not store.get_server(sid):raise ManagerError("GM-108: Server not found")
  return store.list_backups(sid)
+
+def backup_file(sid,bid):
+ if not store.get_server(sid):raise ManagerError("GM-108: Server not found")
+ backup=store.get_backup(sid,bid)
+ if not backup:raise ManagerError("GM-231: Backup not found")
+ root=settings.BACKUPS.resolve()
+ path=Path(backup["filename"]).resolve()
+ if not path.is_relative_to(root) or not path.is_file():
+  raise ManagerError("GM-236: Backup file is missing or outside the backup directory")
+ return path
+
+def delete_backup(sid,bid):
+ path=backup_file(sid,bid)
+ path.unlink()
+ if not store.delete_backup(sid,bid):
+  raise ManagerError("GM-231: Backup record disappeared during deletion")
+ return {"deleted":True,"id":bid}
 def restore_backup(sid,bid,confirm=False):
  if not confirm:raise ManagerError("GM-230: Explicit confirmation required")
  item=store.get_server(sid)
