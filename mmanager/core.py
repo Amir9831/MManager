@@ -185,6 +185,9 @@ def _active(item):
 def server_action(sid,action):
  item=store.get_server(sid)
  if not item:raise ManagerError("GM-108: Server not found")
+ # Repair existing Bedrock properties after MManager upgrades before the next launch.
+ if action in {"start","restart"} and item["edition"]=="bedrock":
+  _configure_bedrock_properties(Path(item["directory"])/"server.properties",item["java_port"],item["version"])
  _systemctl(action,item);return {"ok":True,"action":action}
 def server_logs(sid,lines=100):
  item=store.get_server(sid)
