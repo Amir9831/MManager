@@ -309,10 +309,17 @@ p.chmod(0o600)
 PY
 fi
 echo "Panel: $PANEL_URL"
-if [[ -f /root/mmanager-admin-credentials.txt ]]; then
- echo "Credentials file: /root/mmanager-admin-credentials.txt (password is never printed)"
+if [[ -n "$ADMIN_PASS" ]]; then
+ echo
+ echo "========================================"
+ echo "MManager administrator password (save it now):"
+ echo "$ADMIN_PASS"
+ echo "========================================"
+ echo "The password is also saved in /root/mmanager-admin-credentials.txt (mode 0600)."
 else
- echo "Existing administrator credentials preserved; no password was printed."
+ echo "Existing administrator password preserved; it is not displayed during upgrades."
+ echo "If needed, rotate it from MManager CLI -> Web panel management -> Change administrator password."
 fi
 echo "Manage panel path, password and port from the MManager CLI (option 7)."
+echo "Delete MManager from the CLI with option 9; server data and backups are preserved."
 echo "Firewall configuration is intentionally left untouched. Configure network access outside MManager if needed."
