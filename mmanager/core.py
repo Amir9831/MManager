@@ -217,6 +217,93 @@ def restore_backup(sid,bid,confirm=False):
  return {"restored":True}
 
 
+
+def update_server(sid, version):
+    """Install a verified game-server release with a full pre-update backup."""
+    item=store.get_server(sid)
+    if not item: raise ManagerError("GM-108: Server not found")
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,40}",str(version)): raise ManagerError("GM-105: Invalid Minecraft version")
+    if version==item["version"]: raise ManagerError("Requested version is already installed.")
+    if item["edition"]=="bedrock": artifact=_bedrock(version)
+    elif item["software"]=="vanilla": artifact=_vanilla(version)
+    else: artifact=_paper(version)
+    was_active=_active(item)
+    if was_active: _systemctl("stop",item)
+    backup=None
+    root=Path(item["directory"]).resolve()
+    try:
+        backup=create_backup(sid)
+        import tempfile
+        settings.ROOT.mkdir(parents=True,exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="mmanager-update-",dir=settings.ROOT) as tmpname:
+            tmp=Path(tmpname)
+            if item["edition"]=="bedrock":
+                archive=tmp/"bedrock.zip"
+                _download(artifact["url"],archive,artifact.get("checksum"),artifact.get("algorithm","sha256"))
+                unpack=tmp/"unpack"; unpack.mkdir()
+                with zipfile.ZipFile(archive) as zf:
+                    for member in zf.infolist():
+                        if not (unpack/member.filename).resolve().is_relative_to(unpack.resolve()):
+                            raise ManagerError("GM-232: Unsafe Bedrock archive member")
+                    zf.extractall(unpack)
+                stage=tmp/"stage"
+                shutil.copytree(root,stage,symlinks=False)
+                preserve={"worlds","world_templates","server.properties","allowlist.json","permissions.json","valid_known_packs.json"}
+                for src in unpack.rglob("*"):
+                    rel=src.relative_to(unpack)
+                    if rel.parts and rel.parts[0] in preserve: continue
+                    if src.is_dir():
+                        (stage/rel).mkdir(parents=True,exist_ok=True)
+                    elif src.is_file():
+                        target=stage/rel; target.parent.mkdir(parents=True,exist_ok=True)
+                        shutil.copy2(src,target)
+                binary=stage/"bedrock_server"
+                if not binary.is_file(): raise ManagerError("GM-217: Updated Bedrock archive has no server binary")
+                binary.chmod(0o750)
+            else:
+                downloaded=tmp/"server.jar"
+                _download(artifact["url"],downloaded,artifact.get("checksum"),artifact.get("algorithm","sha1" if item["software"]=="vanilla" else "sha256"))
+                stage=tmp/"stage"
+                shutil.copytree(root,stage,symlinks=False)
+                shutil.copy2(downloaded,stage/"server.jar")
+            state={"backup_id":backup["id"],"previous_version":item["version"],"updated_version":version}
+            (stage/"mmanager-update-state.json").write_text(json.dumps(state))
+            old=root.parent/(root.name+".update-old-"+secrets.token_hex(4))
+            root.rename(old)
+            try: stage.rename(root)
+            except Exception:
+                old.rename(root); raise
+            shutil.rmtree(old,ignore_errors=True)
+        store.update_server_version(sid,version)
+        if was_active: _systemctl("start",item)
+        return {"updated":True,"from":item["version"],"to":version,"backup_id":backup["id"],"restart_required":False}
+    except Exception:
+        if backup:
+            try:
+                restore_backup(sid,backup["id"],True)
+                store.update_server_version(sid,item["version"])
+            except Exception as rollback_error:
+                raise ManagerError("Update failed and automatic rollback also failed: "+str(rollback_error))
+        if was_active:
+            try: _systemctl("start",item)
+            except Exception: pass
+        raise
+
+def rollback_server(sid):
+    item=store.get_server(sid)
+    if not item: raise ManagerError("GM-108: Server not found")
+    state_path=Path(item["directory"])/"mmanager-update-state.json"
+    if not state_path.is_file(): raise ManagerError("No successful server update is available to roll back.")
+    try: state=json.loads(state_path.read_text())
+    except (OSError,ValueError): raise ManagerError("Update rollback metadata is invalid.")
+    backup_id=state.get("backup_id"); previous=state.get("previous_version")
+    if not backup_id or not previous: raise ManagerError("Update rollback metadata is incomplete.")
+    was_active=_active(item)
+    restore_backup(sid,backup_id,True)
+    store.update_server_version(sid,previous)
+    if was_active: _systemctl("start",item)
+    return {"rolled_back":True,"version":previous,"restored_backup":backup_id}
+
 def server_status(sid):
     item = store.get_server(sid)
     if not item:
