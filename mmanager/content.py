@@ -187,6 +187,15 @@ def install_bedrock_resource_pack(sid, fileobj, original_filename, required=Fals
     world = _world_root(item) / _active_world_name(item)
     if not world.is_dir():
         raise core.ManagerError("Active Bedrock world directory does not exist. Start the server once, then stop it before installing packs.")
+    manifest_file = world / "world_resource_packs.json"
+    entries = []
+    if manifest_file.is_file():
+        try:
+            entries = json.loads(manifest_file.read_text())
+            if not isinstance(entries, list) or any(not isinstance(entry, dict) for entry in entries):
+                raise ValueError("expected a list of pack objects")
+        except (OSError, ValueError):
+            raise core.ManagerError("Existing world_resource_packs.json is invalid.")
     with tempfile.TemporaryDirectory(prefix="mmanager-pack-") as tmp:
         stage = Path(tmp)
         try:
@@ -216,20 +225,19 @@ def install_bedrock_resource_pack(sid, fileobj, original_filename, required=Fals
         if target.exists():
             raise core.ManagerError("This resource pack is already installed.")
         core.create_backup(sid)
-        shutil.copytree(pack_root, target, symlinks=False)
-    manifest_file = world / "world_resource_packs.json"
-    entries = []
-    if manifest_file.is_file():
         try:
-            entries = json.loads(manifest_file.read_text())
-            if not isinstance(entries, list):
-                raise ValueError("expected list")
-        except (OSError, ValueError):
-            raise core.ManagerError("Existing world_resource_packs.json is invalid.")
+            shutil.copytree(pack_root, target, symlinks=False)
+        except Exception:
+            shutil.rmtree(target, ignore_errors=True)
+            raise
     entries = [x for x in entries if x.get("pack_id") != pack_id]
     entries.append({"pack_id": pack_id, "version": version})
-    manifest_file.write_text(json.dumps(entries, indent=2) + "\n")
-    core.update_server_settings(sid, {"texturepack-required": "true" if required else "false"})
+    try:
+        manifest_file.write_text(json.dumps(entries, indent=2) + "\n")
+        core.update_server_settings(sid, {"texturepack-required": "true" if required else "false"})
+    except Exception:
+        shutil.rmtree(target, ignore_errors=True)
+        raise
     return {"installed": True, "id": pack_id, "version": version, "required": bool(required)}
 
 
