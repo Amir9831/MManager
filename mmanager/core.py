@@ -386,9 +386,10 @@ def _write_server_runtime(root, edition, software, version, java_port, bedrock_p
                 _download("https://download.geysermc.org/v2/projects/" + project + "/versions/latest/builds/latest/downloads/spigot", dest)
         geyser = plugins / "Geyser-Spigot"
         geyser.mkdir(exist_ok=True)
-        config = (Path(__file__).parent / "templates" / "crossplay-geyser.yml").read_text()
+        config_path = geyser / "config.yml"
+        config = config_path.read_text() if config_path.exists() else (Path(__file__).parent / "templates" / "crossplay-geyser.yml").read_text()
         config = config.replace("port: 19132", "port: " + str(bedrock_port)).replace("port: 25565", "port: " + str(java_port))
-        (geyser / "config.yml").write_text(config)
+        config_path.write_text(config)
 
 
 def _set_property_file(path, key, value):
@@ -494,7 +495,7 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
             geyser_cfg = stage / "plugins" / "Geyser-Spigot" / "config.yml"
             if geyser_cfg.exists():
                 text = geyser_cfg.read_text()
-                text = re.sub(r"(?m)^(\\s*port:)\\s*\\d+", lambda m: m.group(1) + " " + str(bedrock_port), text, count=1)
+                text = text.replace("port: 19132", "port: " + str(bedrock_port)).replace("port: 25565", "port: " + str(java_port))
                 geyser_cfg.write_text(text)
         root.rename(archived if cross_edition else archived)
         try:
