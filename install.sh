@@ -52,7 +52,7 @@ with open("/etc/mmanager/auth.json","w") as f:json.dump({"password_hash":Passwor
 PY
  printf '%s' "$API_TOKEN" >/etc/mmanager/api.token
  chown root:mmanager /etc/mmanager/auth.json /etc/mmanager/api.token; chmod 0640 /etc/mmanager/auth.json /etc/mmanager/api.token
- { echo "MManager administrator"; echo "Username: admin"; echo "Password: $ADMIN_PASS"; echo "Panel: http://127.0.0.1:8766"; echo "SSH: ssh -L 8766:127.0.0.1:8766 -L 8765:127.0.0.1:8765 USER@SERVER"; } >/root/mmanager-admin-credentials.txt
+ { echo "MManager administrator"; echo "Password: $ADMIN_PASS"; echo "Panel: http://127.0.0.1:8766"; } >/root/mmanager-admin-credentials.txt
  chmod 0600 /root/mmanager-admin-credentials.txt; say "Admin password saved to /root/mmanager-admin-credentials.txt"
 else say "Existing administrator credentials preserved"; fi
 # Generate persistent public-panel settings without overwriting existing values.
