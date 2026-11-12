@@ -20,4 +20,4 @@ Interactive `Mmanager` CLI; Argon2id login and bearer auth; Java Vanilla and Pap
 
 ## Not yet implemented
 
-Bedrock Dedicated Server, RCON commands/live interactive console, player moderation, CPU/RAM telemetry, plugin manager, signed self-updater/rollback and automated firewall configuration. The panel/API bind to loopback only. This is an early functional release, not a claim of zero defects. See SECURITY.md and docs/INSTALL.md.
+Bedrock Dedicated Server, RCON commands/live interactive console, player moderation, CPU/RAM telemetry, plugin manager, signed self-updater/rollback and automated firewall configuration. The public panel is protected by a random URL path and Argon2id login; use HTTPS via a trusted reverse proxy for Internet-facing deployments. This is an early functional release, not a claim of zero defects. See SECURITY.md and docs/INSTALL.md.
