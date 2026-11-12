@@ -19,14 +19,14 @@ Admin credentials: `/root/mmanager-admin-credentials.txt` (mode 0600). The insta
 - Interactive CLI and in-CLI MManager updater.
 - Argon2id administrator authentication and bearer-token API.
 - Single-server setup for Java Vanilla/Paper, Bedrock Dedicated Server, and Paper + Geyser/Floodgate cross-play.
-- Live release catalogs and bundled Java/Bedrock/Geyser templates.
+- Live release catalogs, bundled Java/Bedrock/Geyser templates, and a validated Cross-play Geyser settings editor.
 - Editable `server.properties`, systemd lifecycle, per-server file logs, and log rotation.
 - Compressed backups, guarded restore, and safety backup before restore.
 - Interactive game console: RCON for Java/Cross-play and a managed stdin FIFO for Bedrock Dedicated Server; supports commands and chat broadcasts.
 - Three player lists (online, known offline, admins), Java OP levels 1–4, Bedrock Operator/Member/Visitor roles, Kick, and Java/Cross-play Ban/Pardon.
 - Bedrock Dedicated Server has no native player ban list; its allowlist can restrict access only when enabled.
 - Process-level CPU and RAM telemetry through same-user `/proc` access; no sudo elevation is needed.
-- Per-server file-backed logs with bounded tail reads and log rotation; systemd lifecycle authorization is restricted through PolicyKit and remains compatible with `NoNewPrivileges=true`.
+- Per-server file-backed logs with bounded tail reads and log rotation; Java/Bedrock player activity uses those files. Systemd lifecycle authorization is restricted through PolicyKit and remains compatible with `NoNewPrivileges=true`.
 - World upload/switch management with ZIP validation and pre-change backups.
 - Resource-pack configuration for Java/Cross-play and `.mcpack` installation for Bedrock.
 - Guarded Java/Bedrock/Cross-play switching; incompatible worlds are archived rather than silently converted.
