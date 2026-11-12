@@ -124,7 +124,10 @@ for path in \
  snapshot_file "$path"
 done
 : >"$TMP/active-mc-units"
-systemctl list-units --type=service --state=running --no-legend 'mmanager-mc@*.service' 2>/dev/null | awk '{print $1}' | grep -E '^mmanager-mc@[A-Za-z0-9_-]+\.service
+systemctl list-units --type=service --state=running --no-legend 'mmanager-mc@*.service' 2>/dev/null | awk '$1 ~ /^mmanager-mc@[A-Za-z0-9_-]+[.]service$/ {print $1}' >"$TMP/active-mc-units" || true
+ROLLBACK_ACTIVE=1
+
+id mmanager >/dev/null 2>&1 || useradd --system --home-dir /var/lib/mmanager --create-home --shell /usr/sbin/nologin mmanager
 install -d -o root -g mmanager -m 0750 /etc/mmanager
 chown root:mmanager /etc/mmanager
 chmod 0750 /etc/mmanager
