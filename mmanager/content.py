@@ -20,7 +20,7 @@ def _server(sid):
 
 def _world_name(value):
     value = str(value or "").strip()
-    if not re.fullmatch(r"[A-Za-z0-9_-]{1,48}", value):
+    if not re.fullmatch(r"[A-Za-z0-9 _-]{1,48}", value):
         raise core.ManagerError("World name must be 1-48 letters, digits, underscores or hyphens.")
     return value
 
@@ -60,8 +60,11 @@ def _validate_zip(zf, max_expanded=8 * 1024**3):
         mode = (info.external_attr >> 16) & 0xFFFF
         if name.startswith("/") or ".." in parts or (parts and ":" in parts[0]):
             raise core.ManagerError("Unsafe archive path rejected.")
-        if stat.S_ISLNK(mode) or (not info.is_dir() and not stat.S_ISREG(mode) and mode != 0):
+        file_type = stat.S_IFMT(mode)
+        if stat.S_ISLNK(mode) or file_type not in (0, stat.S_IFREG, stat.S_IFDIR):
             raise core.ManagerError("Archive contains an unsupported file type.")
+        if info.is_dir() and file_type == stat.S_IFREG:
+            raise core.ManagerError("Archive directory entry has an invalid file type.")
         total += info.file_size
         if total > max_expanded:
             raise core.ManagerError("Archive expands beyond the 8 GiB safety limit.")
