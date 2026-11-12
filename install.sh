@@ -96,6 +96,7 @@ PY
 fi
 echo "Panel: $PANEL_URL"
 echo "Credentials: /root/mmanager-admin-credentials.txt"
-cat /root/mmanager-admin-credentials.txt
+if [[ -f /root/mmanager-admin-credentials.txt ]]; then cat /root/mmanager-admin-credentials.txt; else echo "Existing admin password preserved; credential file is missing."; fi
 echo "Manage panel path, password and port from the Mmanager CLI (option 7)."
-echo "Allow TCP port $PANEL_PORT in your VPS/cloud firewall."
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then ufw allow "$PANEL_PORT/tcp" || say "Could not update UFW; open TCP $PANEL_PORT manually"; fi
+echo "Allow TCP port $PANEL_PORT in your VPS/cloud firewall if applicable."
