@@ -23,18 +23,21 @@ def _rcon(item, command):
     if not password: raise ManagerError("RCON password is not configured.")
     try: port=int(settings.get("rcon.port","25575"))
     except ValueError: raise ManagerError("Invalid RCON port.")
+    def recv_exact(sock, size):
+        chunks=b""
+        while len(chunks)<size:
+            part=sock.recv(size-len(chunks))
+            if not part: raise ManagerError("RCON connection closed.")
+            chunks+=part
+        return chunks
     def packet(sock, reqid, typ, payload):
         data=struct.pack("<ii",reqid,typ)+payload.encode("utf-8")+b"\0\0"
         sock.sendall(struct.pack("<i",len(data))+data)
-        head=sock.recv(4)
-        if len(head)!=4: raise ManagerError("RCON connection closed.")
+        head=recv_exact(sock,4)
         size=struct.unpack("<i",head)[0]
         if size<10 or size>1024*1024: raise ManagerError("Invalid RCON response.")
         body=b""
-        while len(body)<size:
-            chunk=sock.recv(size-len(body))
-            if not chunk: raise ManagerError("Incomplete RCON response.")
-            body+=chunk
+        body=recv_exact(sock,size)
         rid,rtype=struct.unpack("<ii",body[:8])
         if rid == -1: raise ManagerError("RCON authentication failed.")
         return body[8:-2].decode("utf-8","replace")
@@ -52,7 +55,7 @@ def configure_rcon(sid, enabled, password=None, port=25575):
     if enabled and (not password or len(password)<16 or len(password)>128):
         raise ManagerError("Set an RCON password of at least 16 characters.")
     from .core import update_server_settings
-    changes={"enable-rcon":"true" if enabled else "false","rcon.port":str(int(port))}
+    changes={"enable-rcon":"true" if enabled else "false","rcon.port":str(int(port)),"rcon.ip":"127.0.0.1"}
     if enabled: changes["rcon.password"]=password
     result=update_server_settings(sid,changes)
     return {"enabled":bool(enabled),"port":int(port),"restart_required":True,"saved":True}
@@ -152,15 +155,26 @@ def install_plugin(sid, version_id):
     if not file or not file["filename"].endswith(".jar"): raise ManagerError("Modrinth release has no primary JAR file.")
     dest=Path(item["directory"])/"plugins"/Path(file["filename"]).name
     if dest.exists(): raise ManagerError("A plugin with that filename already exists.")
-    req=urllib.request.Request(file["url"],headers={"User-Agent":"MManager/0.4"})
-    with urllib.request.urlopen(req,timeout=60) as r, dest.open("xb") as out:
-        total=0
-        while True:
-            chunk=r.read(1024*1024)
-            if not chunk: break
-            total+=len(chunk)
-            if total>100*1024*1024: raise ManagerError("Plugin download exceeds 100 MiB.")
-            out.write(chunk)
+    parsed=urllib.parse.urlparse(file["url"])
+    if parsed.scheme!="https" or parsed.hostname not in {"cdn.modrinth.com","cdn-raw.modrinth.com"}:
+        raise ManagerError("Untrusted plugin download host.")
+    import hashlib
+    digest=hashlib.sha512()
+    try:
+        with urllib.request.urlopen(urllib.request.Request(file["url"],headers={"User-Agent":"MManager/0.4"}),timeout=60) as r, dest.open("xb") as out:
+            total=0
+            while True:
+                chunk=r.read(1024*1024)
+                if not chunk: break
+                total+=len(chunk)
+                if total>100*1024*1024: raise ManagerError("Plugin download exceeds 100 MiB.")
+                digest.update(chunk);out.write(chunk)
+        expected=file.get("hashes",{}).get("sha512")
+        if expected and digest.hexdigest().lower()!=expected.lower():
+            raise ManagerError("Plugin checksum mismatch; installation aborted.")
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise
     return {"installed":dest.name,"version":v.get("version_number")}
 
 def remove_plugin(sid, filename):
