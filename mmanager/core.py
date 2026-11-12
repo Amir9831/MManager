@@ -32,20 +32,21 @@ def _vanilla(version):
  return {"url":server["url"],"checksum":server.get("sha1"),"algorithm":"sha1"}
 
 def _bedrock(version):
- links=_json("https://net-secondary.web.minecraft-services.net/api/v1.0/download/links").get("result",{}).get("links",[])
- entry=next((x for x in links if x.get("downloadType")=="serverBedrockLinux"),None)
- if not entry: raise ManagerError("GM-216: Official Bedrock Linux download unavailable")
- url=entry.get("downloadUrl","")
- match=re.search(r"bedrock-server-([0-9.]+)\.zip$",url)
- if not match or version not in {"latest",match.group(1)}: raise ManagerError("GM-216: Requested Bedrock version is not the current official release")
- return {"url":url,"checksum":None,"algorithm":"sha256"}
+ registry=_json("https://raw.githubusercontent.com/EndstoneMC/bedrock-server-data/v2/versions.json")
+ release=registry.get("release",{})
+ if version=="latest": version=release.get("latest")
+ if version not in release.get("versions",[]): raise ManagerError("GM-216: Bedrock release version not found")
+ metadata=_json("https://raw.githubusercontent.com/EndstoneMC/bedrock-server-data/v2/release/"+version+"/metadata.json")
+ linux=metadata.get("binary",{}).get("linux",{})
+ if not linux.get("url"): raise ManagerError("GM-216: Bedrock Linux artifact unavailable")
+ return {"url":linux["url"],"checksum":linux.get("sha256"),"algorithm":"sha256"}
 
 def available_versions(edition):
  if edition not in {"java","bedrock","crossplay"}: raise ManagerError("GM-102: Invalid edition")
  if edition=="bedrock":
-  artifact=_bedrock("latest")
-  version=re.search(r"bedrock-server-([0-9.]+)\.zip$",artifact["url"]).group(1)
-  return {"latest":version,"versions":[{"id":version,"type":"release"}]}
+  registry=_json("https://raw.githubusercontent.com/EndstoneMC/bedrock-server-data/v2/versions.json")
+  release=registry.get("release",{})
+  return {"latest":release.get("latest"),"versions":[{"id":v,"type":"release"} for v in release.get("versions",[])]}
  manifest=_json("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
  versions=[v for v in manifest.get("versions",[]) if v.get("type")=="release"]
  if edition=="crossplay":
