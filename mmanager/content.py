@@ -20,8 +20,8 @@ def _server(sid):
 
 def _world_name(value):
     value = str(value or "").strip()
-    if not re.fullmatch(r"[A-Za-z0-9 _-]{1,48}", value):
-        raise core.ManagerError("World name must be 1-48 letters, digits, underscores or hyphens.")
+    if value in {".", ".."} or not re.fullmatch(r"[A-Za-z0-9 ._-]{1,48}", value):
+        raise core.ManagerError("World name must be 1-48 safe letters, digits, spaces, dots, underscores or hyphens.")
     return value
 
 
@@ -32,7 +32,7 @@ def _world_root(item):
 
 def _active_world_name(item):
     values = core.server_settings(item["id"])["settings"]
-    return values.get("level-name") or ("Bedrock level" if item["edition"] == "bedrock" else "world")
+    return _world_name(values.get("level-name") or ("Bedrock level" if item["edition"] == "bedrock" else "world"))
 
 
 def list_worlds(sid):
@@ -147,6 +147,8 @@ def resource_pack_info(sid):
         if manifest.is_file():
             try:
                 entries = json.loads(manifest.read_text())
+                if not isinstance(entries, list) or any(not isinstance(entry, dict) for entry in entries):
+                    raise ValueError("expected a list of pack objects")
                 for entry in entries:
                     packs.append({"id": entry.get("pack_id"), "version": entry.get("version")})
             except (OSError, ValueError):
@@ -244,6 +246,8 @@ def remove_bedrock_resource_pack(sid, pack_id):
     world = _world_root(item) / _active_world_name(item)
     manifest_file = world / "world_resource_packs.json"
     entries = json.loads(manifest_file.read_text()) if manifest_file.exists() else []
+    if not isinstance(entries, list) or any(not isinstance(entry, dict) for entry in entries):
+        raise core.ManagerError("Existing world_resource_packs.json is invalid.")
     updated = [x for x in entries if x.get("pack_id") != pack_id]
     if len(updated) == len(entries):
         raise core.ManagerError("Resource pack is not assigned to the active world.")
