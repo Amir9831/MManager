@@ -30,22 +30,30 @@ def _rcon(item, command):
             if not part: raise ManagerError("RCON connection closed.")
             chunks+=part
         return chunks
-    def packet(sock, reqid, typ, payload):
+    def send_packet(sock, reqid, typ, payload):
         data=struct.pack("<ii",reqid,typ)+payload.encode("utf-8")+b"\0\0"
         sock.sendall(struct.pack("<i",len(data))+data)
-        head=recv_exact(sock,4)
-        size=struct.unpack("<i",head)[0]
+    def recv_packet(sock):
+        size=struct.unpack("<i",recv_exact(sock,4))[0]
         if size<10 or size>1024*1024: raise ManagerError("Invalid RCON response.")
-        body=b""
         body=recv_exact(sock,size)
         rid,rtype=struct.unpack("<ii",body[:8])
-        if rid == -1: raise ManagerError("RCON authentication failed.")
-        return body[8:-2].decode("utf-8","replace")
+        return rid,rtype,body[8:-2].decode("utf-8","replace")
     try:
         with socket.create_connection(("127.0.0.1",port),timeout=3) as s:
             s.settimeout(3)
-            packet(s,11,3,password)
-            return packet(s,12,2,command)
+            send_packet(s,11,3,password)
+            auth_id,auth_type,_=recv_packet(s)
+            if auth_id==-1: raise ManagerError("RCON authentication failed.")
+            if auth_id!=11: raise ManagerError("Unexpected RCON authentication response.")
+            send_packet(s,12,2,command)
+            send_packet(s,13,0,"")
+            responses=[]
+            while True:
+                rid,_,payload=recv_packet(s)
+                if rid==13: break
+                if rid==12: responses.append(payload)
+            return "".join(responses)
     except OSError as exc: raise ManagerError("RCON unavailable: "+str(exc))
 
 def configure_rcon(sid, enabled, password=None, port=25575):
