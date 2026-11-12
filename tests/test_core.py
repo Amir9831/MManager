@@ -5,6 +5,8 @@ from mmanager import core,store,settings
 def setup(monkeypatch,tmp_path):
  monkeypatch.setattr(store,"DATA",tmp_path/"data");monkeypatch.setattr(store,"DB",tmp_path/"data"/"test.db")
  monkeypatch.setattr(settings,"SERVERS",tmp_path/"servers")
+ monkeypatch.setattr(settings,"ROOT",tmp_path/"root")
+ monkeypatch.setattr(settings,"BACKUPS",tmp_path/"backups")
  monkeypatch.setattr(core,"_vanilla",lambda v:{"url":"https://invalid.test/server.jar","checksum":None,"algorithm":"sha1"})
  monkeypatch.setattr(core,"_paper",lambda v:{"url":"https://invalid.test/paper.jar","checksum":None,"algorithm":"sha256"})
  monkeypatch.setattr(core,"_download",lambda u,d,*a:Path(d).write_bytes(b"x"*2048))
