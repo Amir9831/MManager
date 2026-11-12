@@ -16,7 +16,11 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/mmanager/servers/%i
+LogsDirectory=mmanager/servers
+LogsDirectoryMode=0750
+StandardOutput=append:/var/log/mmanager/servers/%i.log
+StandardError=inherit
+ReadWritePaths=/var/lib/mmanager/servers/%i /var/log/mmanager/servers
 LimitNOFILE=100000
 [Install]
 WantedBy=multi-user.target
