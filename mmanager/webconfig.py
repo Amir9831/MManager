@@ -21,7 +21,7 @@ def load():
 def save(data):
     CONFIG.mkdir(parents=True, exist_ok=True)
     tmp = WEB_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=2) + "\\n")
+    tmp.write_text(json.dumps(data, indent=2) + "\n")
     tmp.chmod(0o640)
     tmp.replace(WEB_FILE)
 
