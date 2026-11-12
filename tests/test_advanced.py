@@ -100,3 +100,65 @@ def test_proc_stat_parser_handles_spaces_in_process_name():
     # Fields after the final ')' start at field 3; utime/stime are fields 14/15.
     raw = "123 (java server worker) S " + " ".join(str(i) for i in range(1, 30))
     assert advanced._proc_cpu_ticks(raw) == 11 + 12
+
+
+def _setup_player_tests(monkeypatch, tmp_path):
+    monkeypatch.setattr(store, "DATA", tmp_path / "data")
+    monkeypatch.setattr(store, "DB", tmp_path / "data" / "test.db")
+    monkeypatch.setattr(settings, "SERVERS", tmp_path / "servers")
+    monkeypatch.setattr(core, "_vanilla", lambda v: {"url": "https://invalid.test/server.jar", "checksum": None, "algorithm": "sha1"})
+    monkeypatch.setattr(core, "_paper", lambda v: {"url": "https://invalid.test/paper.jar", "checksum": None, "algorithm": "sha256"})
+    monkeypatch.setattr(core, "_bedrock", lambda v: {"url": "https://invalid.test/bds.zip", "checksum": None, "algorithm": "sha256"})
+    def download(url, dest, *args):
+        if str(dest).endswith(".zip"):
+            import zipfile
+            with zipfile.ZipFile(dest, "w") as z:
+                z.writestr("bedrock_server", b"fake-bds-binary")
+        else:
+            Path(dest).write_bytes(b"x" * 2048)
+    monkeypatch.setattr(core, "_download", download)
+    monkeypatch.setattr(core, "choose_port", lambda p, proto, reserved: p if p not in reserved else p + 1)
+
+
+def test_java_player_lists_include_offline_admin_and_banned(monkeypatch, tmp_path):
+    _setup_player_tests(monkeypatch, tmp_path)
+    item = core.create_server("java", "java", "1.21.4", "vanilla", True)
+    root = Path(item["directory"])
+    (root / "usercache.json").write_text(json.dumps([{"name": "Alex", "uuid": "a"}, {"name": "Steve", "uuid": "b"}]))
+    (root / "ops.json").write_text(json.dumps([{"name": "Alex", "uuid": "a", "level": 3}]))
+    (root / "whitelist.json").write_text("[]")
+    (root / "banned-players.json").write_text(json.dumps([{"name": "Steve", "uuid": "b"}]))
+    monkeypatch.setattr(advanced, "_rcon", lambda item, command: "There are 1 of a max of 20 players online: Alex")
+    data = advanced.players(item["id"])
+    assert [x["name"] for x in data["online"]] == ["Alex"]
+    assert [x["name"] for x in data["offline"]] == ["Steve"]
+    assert data["admins"][0]["level"] == 3
+    assert data["offline"][0]["banned"] is True
+
+
+def test_bedrock_player_lists_and_permissions(monkeypatch, tmp_path):
+    _setup_player_tests(monkeypatch, tmp_path)
+    item = core.create_server("bedrock", "bedrock", "1.26.63", "bedrock", True)
+    root = Path(item["directory"])
+    (root / "allowlist.json").write_text(json.dumps([{"name": "Builder", "xuid": "12345"}, {"name": "Guest", "xuid": "67890"}]))
+    (root / "permissions.json").write_text(json.dumps([{"permission": "operator", "xuid": "12345"}]))
+    monkeypatch.setattr(advanced, "_bedrock_online", lambda item: [{"name": "Builder", "xuid": "12345", "online": True}, {"name": "Guest", "xuid": "67890", "online": False}])
+    monkeypatch.setattr(advanced, "console", lambda sid, command: {"response": command})
+    data = advanced.players(item["id"])
+    assert [x["name"] for x in data["online"]] == ["Builder"]
+    assert [x["name"] for x in data["offline"]] == ["Guest"]
+    assert data["admins"][0]["name"] == "Builder"
+    result = advanced.moderate(item["id"], "permission", "Guest", permission="visitor")
+    assert result["response"] == "permission reload"
+    permissions = json.loads((root / "permissions.json").read_text())
+    assert {"permission": "visitor", "xuid": "67890"} in permissions
+
+
+def test_bedrock_console_fifo_wrapper(monkeypatch, tmp_path):
+    _setup_player_tests(monkeypatch, tmp_path)
+    item = core.create_server("bedrock", "bedrock", "1.26.63", "bedrock", True)
+    assert advanced.ensure_bedrock_console(item) is True
+    script = (Path(item["directory"]) / "run.sh").read_text()
+    assert ".mmanager-console.fifo" in script
+    assert "exec 3<>" in script
+    assert advanced.ensure_bedrock_console(item) is False
