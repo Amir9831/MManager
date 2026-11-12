@@ -244,7 +244,13 @@ def test_bedrock_status_detects_wrong_udp_port(monkeypatch, tmp_path):
 
     monkeypatch.setattr(core, "_active", lambda _: True)
     monkeypatch.setattr(core.shutil, "which", lambda _: "/usr/bin/ss")
-    monkeypatch.setattr(core.subprocess, "run", lambda *args, **kwargs: Result())
+
+    def fake_run(args, **kwargs):
+        if args[0] == "/usr/bin/systemctl":
+            return type("PidResult", (), {"returncode": 0, "stdout": "8907\\n", "stderr": ""})()
+        return Result()
+
+    monkeypatch.setattr(core.subprocess, "run", fake_run)
 
     status = core.server_status("status-id")
     assert status["status"] == "degraded"
