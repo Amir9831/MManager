@@ -147,12 +147,10 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
 def _systemctl(action,item):
  if action not in {"start","stop","restart"}:raise ManagerError("GM-109: Invalid action")
  cmd=["/usr/bin/systemctl",action,f"mmanager-mc@{item['name']}.service"]
- if os.geteuid()!=0:cmd=["/usr/bin/sudo","-n",*cmd]
  p=subprocess.run(cmd,capture_output=True,text=True,timeout=30)
  if p.returncode:raise ManagerError("GM-220: "+(p.stderr.strip() or p.stdout.strip())[:300])
 def _active(item):
  cmd=["/usr/bin/systemctl","is-active",f"mmanager-mc@{item['name']}.service"]
- if os.geteuid()!=0:cmd=["/usr/bin/sudo","-n",*cmd]
  p=subprocess.run(cmd,capture_output=True,text=True,timeout=15)
  if p.returncode==0:return True
  if p.returncode==3 and p.stdout.strip()=="inactive":return False
