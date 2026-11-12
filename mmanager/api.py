@@ -24,6 +24,8 @@ class Moderation(BaseModel):
  action:str
  player:str
  reason:str=""
+ permission_level:int=4
+ permission:str="operator"
 class PluginInstall(BaseModel): version_id:str
 class ServerUpdate(BaseModel): version:str
 class SwitchServer(BaseModel):
@@ -204,7 +206,7 @@ def players(_:bool=Depends(secured)):
 def moderate(p:Moderation,_:bool=Depends(secured)):
  item=current_server()
  if not item:raise HTTPException(404,detail="No server is configured")
- try:return advanced.moderate(item["id"],p.action,p.player,p.reason)
+ try:return advanced.moderate(item["id"],p.action,p.player,p.reason,p.permission_level,p.permission)
  except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
 @app.get("/api/server/plugins")
 def plugins(_:bool=Depends(secured)):
