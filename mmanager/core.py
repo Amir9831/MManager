@@ -106,8 +106,13 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
  try:
   with store.connect() as db:
    db.execute("BEGIN IMMEDIATE")
-   used_tcp={r[0] for r in db.execute("SELECT java_port FROM servers WHERE java_port IS NOT NULL")}
-   item["java_port"]=choose_port(19132 if edition=="bedrock" else 25565,"udp" if edition=="bedrock" else "tcp",used_tcp)
+   if edition=="bedrock":
+    used_udp={r[0] for r in db.execute("SELECT java_port FROM servers WHERE edition='bedrock' AND java_port IS NOT NULL")}
+    used_udp.update(r[0] for r in db.execute("SELECT bedrock_port FROM servers WHERE bedrock_port IS NOT NULL"))
+    item["java_port"]=choose_port(19132,"udp",used_udp)
+   else:
+    used_tcp={r[0] for r in db.execute("SELECT java_port FROM servers WHERE java_port IS NOT NULL")}
+    item["java_port"]=choose_port(25565,"tcp",used_tcp)
    if edition=="crossplay":
     used_udp={r[0] for r in db.execute("SELECT bedrock_port FROM servers WHERE bedrock_port IS NOT NULL")}
     item["bedrock_port"]=choose_port(19132,"udp",used_udp)
@@ -125,8 +130,8 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
    if not binary.exists(): raise ManagerError("GM-217: Bedrock binary missing from official archive")
    binary.chmod(0o750)
    props=(Path(__file__).parent/"templates"/"bedrock-server.properties").read_text()
-   props=re.sub(r"(?m)^server-port=.*$","server-port="+str(item["java_port"]),props)
    (d/"server.properties").write_text(props)
+   _configure_bedrock_properties(d/"server.properties",item["java_port"])
    (d/"run.sh").write_text("#!/bin/sh\ncd /var/lib/mmanager/servers/"+name+"\nLD_LIBRARY_PATH=. exec ./bedrock_server\n")
   else:
    (d/"eula.txt").write_text("eula=true\n")
@@ -398,8 +403,8 @@ def _write_server_runtime(root, edition, software, version, java_port, bedrock_p
         binary = root / "bedrock_server"
         binary.chmod(0o750)
         props = (Path(__file__).parent / "templates" / "bedrock-server.properties").read_text()
-        props = re.sub(r"(?m)^server-port=.*$", "server-port=" + str(java_port), props)
         (root / "server.properties").write_text(props)
+        _configure_bedrock_properties(root / "server.properties", java_port)
         (root / "run.sh").write_text("#!/bin/sh\ncd \"$(dirname \"$0\")\"\nLD_LIBRARY_PATH=. exec ./bedrock_server\n")
     else:
         artifact = _vanilla(version) if software == "vanilla" else _paper(version)
@@ -425,6 +430,16 @@ def _write_server_runtime(root, edition, software, version, java_port, bedrock_p
         config = config_path.read_text() if config_path.exists() else (Path(__file__).parent / "templates" / "crossplay-geyser.yml").read_text()
         config = config.replace("port: 19132", "port: " + str(bedrock_port)).replace("port: 25565", "port: " + str(java_port))
         config_path.write_text(config)
+
+
+def _configure_bedrock_properties(path, port):
+    """Apply the documented BDS port settings and disable default-port LAN discovery."""
+    for key, value in (
+        ("server-port", port),
+        ("server-portv6", port),
+        ("enable-lan-visibility", "false"),
+    ):
+        _set_property_file(path, key, str(value))
 
 
 def _set_property_file(path, key, value):
@@ -525,7 +540,7 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
         if edition != "bedrock":
             _set_property_file(stage / "server.properties", "server-port", str(java_port))
         else:
-            _set_property_file(stage / "server.properties", "server-port", str(java_port))
+            _configure_bedrock_properties(stage / "server.properties", java_port)
         if edition == "crossplay":
             geyser_cfg = stage / "plugins" / "Geyser-Spigot" / "config.yml"
             if geyser_cfg.exists():
