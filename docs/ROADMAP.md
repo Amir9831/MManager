@@ -2,7 +2,7 @@
 
 ## Completed in 0.7.0
 - [x] Java Vanilla/Paper and Bedrock Dedicated Server provisioning
-- [x] Paper Geyser/Floodgate cross-play provisioning
+- [x] Paper Geyser/Floodgate cross-play provisioning and validated settings editor
 - [x] Per-server file-backed logs and log rotation
 - [x] Bedrock CDN browser User-Agent compatibility
 - [x] Public panel explicit bind and configured port
@@ -16,7 +16,6 @@
 ## Known limitations / future work
 - [ ] Fabric/Forge server installation and Modrinth mod lifecycle
 - [ ] Multi-server selection and per-server API/UI routing
-- [ ] Advanced Geyser configuration editor
 - [ ] HTTPS termination inside MManager (public panel remains HTTP by user requirement)
 - [ ] Native Bedrock ban list (not provided by BDS)
 - [ ] Bedrock RCON (not provided by BDS)
