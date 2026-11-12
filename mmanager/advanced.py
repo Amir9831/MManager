@@ -95,6 +95,25 @@ def console(sid, command):
     return {"response": _rcon(item, command)}
 
 
+def _java_online_from_logs(item):
+    try:
+        logs = subprocess.run(
+            ["/usr/bin/journalctl", "--quiet", "-u", "mmanager-mc@" + item["name"] + ".service",
+             "--no-pager", "-o", "cat", "-n", "2000"],
+            capture_output=True, text=True, timeout=10, check=True).stdout
+    except Exception:
+        return []
+    states = {}
+    for line in logs.splitlines():
+        joined = re.search(r":\s*([A-Za-z0-9_]{1,16}) joined the game", line, re.I)
+        left = re.search(r":\s*([A-Za-z0-9_]{1,16}) left the game", line, re.I)
+        match = joined or left
+        if match:
+            name = match.group(1)
+            states[name.lower()] = {"name": name, "online": bool(joined)}
+    return [x for x in states.values() if x["online"]]
+
+
 def players(sid):
     item = _server(sid)
     root = Path(item["directory"])
@@ -111,6 +130,7 @@ def players(sid):
                 online = [{"name": x.strip(), "online": True} for x in match.group(1).split(",") if x.strip()]
         except ManagerError as exc:
             raw = str(exc)
+            online = _java_online_from_logs(item)
     if item["edition"] == "bedrock":
         allowlist = _read_json(root / "allowlist.json", [])
         permissions = _read_json(root / "permissions.json", [])
