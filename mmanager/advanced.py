@@ -178,7 +178,48 @@ def moderate(sid, action, player, reason="", permission_level=4, permission="ope
     if item["edition"] == "bedrock":
         if action in {"ban", "pardon"}:
             raise ManagerError("Bedrock Dedicated Server has no native ban/pardon list. Use Allowlist controls only if allow-list=true; removing a player from an allowlist is not a ban.")
-        if action == "op":
+        root = Path(item["directory"])
+        allowlist_path = root / "allowlist.json"
+        allowlist = _read_json(allowlist_path, [])
+        history = _bedrock_online(item)
+        known = next((x for x in allowlist if isinstance(x, dict) and str(x.get("name", "")).lower() == player.lower()), None)
+        if not known:
+            known = next((x for x in history if x["name"].lower() == player.lower()), None)
+        if action in {"op", "deop", "permission"}:
+            target_permission = "operator" if action == "op" else "member" if action == "deop" else permission
+            if target_permission not in {"operator", "member", "visitor"}:
+                raise ManagerError("Bedrock permission must be operator, member or visitor.")
+            xuid = str((known or {}).get("xuid", ""))
+            if not xuid:
+                raise ManagerError("Bedrock XUID not found. The player must join once or be added to allowlist first.")
+            path = root / "permissions.json"
+            entries = _read_json(path, [])
+            entries = [x for x in entries if not (isinstance(x, dict) and str(x.get("xuid", "")) == xuid)]
+            if target_permission != "member":
+                entries.append({"permission": target_permission, "xuid": xuid})
+            path.write_text(json.dumps(entries, indent=2) + "\n")
+            if _active(item):
+                return console(sid, "permission reload")
+            return {"response": "Permission saved; it will be applied when the server starts.", "restart_required": True}
+        if action in {"allowlist_add", "allowlist_remove"}:
+            if core.server_settings(sid)["settings"].get("allow-list", "false").lower() != "true":
+                raise ManagerError("Enable allow-list=true first; otherwise allowlist removal cannot restrict access.")
+            if action == "allowlist_add":
+                xuid = str((known or {}).get("xuid", ""))
+                if not xuid:
+                    raise ManagerError("Bedrock XUID not found. The player must join once before being added.")
+                if not known:
+                    allowlist.append({"ignoresPlayerLimit": False, "name": player, "xuid": xuid})
+            else:
+                allowlist = [x for x in allowlist if not (isinstance(x, dict) and str(x.get("name", "")).lower() == player.lower())]
+            allowlist_path.write_text(json.dumps(allowlist, indent=2) + "\n")
+            if _active(item):
+                return console(sid, "allowlist reload")
+            return {"response": "Allowlist saved; it will be applied when the server starts.", "restart_required": True}
+        if action == "kick":
+            return console(sid, 'kick "' + player + '"' + (" " + reason if reason else ""))
+        raise ManagerError("Unsupported Bedrock player action.")
+    if action == "op":
             return console(sid, 'op "' + player + '"')
         if action == "deop":
             return console(sid, 'deop "' + player + '"')
