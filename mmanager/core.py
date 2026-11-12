@@ -187,6 +187,39 @@ def create_backup(sid):
   dest.unlink(missing_ok=True);raise
  finally:
   if was_active:_systemctl("start",item)
+def import_backup(sid, fileobj, original_filename):
+ item=store.get_server(sid)
+ if not item:raise ManagerError("GM-108: Server not found")
+ name=Path(str(original_filename or "")).name.lower()
+ if not (name.endswith(".tar.gz") or name.endswith(".tgz")):raise ManagerError("GM-234: Backup must be a .tar.gz or .tgz archive")
+ settings.BACKUPS.mkdir(parents=True,exist_ok=True)
+ bid=str(uuid.uuid4());dest=settings.BACKUPS/f"{item['name']}-import-{bid}.tar.gz"
+ total=0
+ try:
+  with dest.open("xb") as out:
+   while True:
+    chunk=fileobj.read(1024*1024)
+    if not chunk:break
+    total+=len(chunk)
+    if total>8*1024**3:raise ManagerError("GM-235: Uploaded backup exceeds 8 GiB")
+    out.write(chunk)
+  if total<100:raise ManagerError("GM-234: Backup archive is empty or invalid")
+  with tarfile.open(dest,"r:gz") as tar:
+   members=tar.getmembers()
+   if not members:raise ManagerError("GM-234: Backup archive is empty")
+   expanded=0
+   for member in members:
+    target=(Path("/safe-root")/member.name).resolve()
+    if not target.is_relative_to(Path("/safe-root")) or not (member.isfile() or member.isdir()):
+     raise ManagerError("GM-232: Unsafe backup archive member rejected")
+    expanded+=member.size
+    if expanded>16*1024**3:raise ManagerError("GM-235: Expanded backup exceeds 16 GiB")
+  store.add_backup({"id":bid,"server_id":sid,"filename":str(dest),"size":dest.stat().st_size})
+  return {"id":bid,"filename":dest.name,"size":dest.stat().st_size,"imported":True}
+ except Exception:
+  dest.unlink(missing_ok=True)
+  raise
+
 def list_backups(sid):
  if not store.get_server(sid):raise ManagerError("GM-108: Server not found")
  return store.list_backups(sid)
