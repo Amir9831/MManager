@@ -20,7 +20,7 @@ Admin credentials: `/root/mmanager-admin-credentials.txt` (mode 0600). The insta
 - Argon2id administrator authentication and bearer-token API.
 - Single-server setup for Java Vanilla/Paper, Bedrock Dedicated Server, and Paper + Geyser/Floodgate cross-play.
 - Live release catalogs and bundled Java/Bedrock/Geyser templates.
-- Editable `server.properties`, systemd lifecycle, and journal logs.
+- Editable `server.properties`, systemd lifecycle, per-server file logs, and log rotation.
 - Compressed backups, guarded restore, and safety backup before restore.
 - Interactive game console: RCON for Java/Cross-play and a managed stdin FIFO for Bedrock Dedicated Server; supports commands and chat broadcasts.
 - Three player lists (online, known offline, admins), Java OP levels 1–4, Bedrock Operator/Member/Visitor roles, Kick, and Java/Cross-play Ban/Pardon.
