@@ -118,7 +118,7 @@ def uninstall_manager():
 
 def main():
  while True:
-  print("\nMManager\n1 Server management\n2 Restart Core\n3 Restart Web\n4 Start services\n5 Stop services\n6 Diagnostics\n7 Web panel management\n8 Update MManager\n0 Exit")
+  print("\nMManager\n1 Server management\n2 Restart Core\n3 Restart Web\n4 Start services\n5 Stop services\n6 Diagnostics\n7 Web panel management\n8 Update MManager\n9 Delete MManager\n0 Exit")
   c=input("> ").strip()
   if c=="0": return
   if c=="1":
@@ -154,4 +154,5 @@ def main():
   elif c=="6": subprocess.run(["systemctl","--failed","--no-pager"])
   elif c=="7": web_menu()
   elif c=="8": update_manager()
+  elif c=="9": uninstall_manager(); return
   else: print("Invalid selection")
