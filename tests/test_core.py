@@ -56,7 +56,10 @@ def test_bedrock_install_uses_verified_zip(monkeypatch,tmp_path):
     assert item["java_port"]==19132
     assert (root/"bedrock_server").exists()
     assert "LD_LIBRARY_PATH" in (root/"run.sh").read_text()
-    assert "server-port=19132" in (root/"server.properties").read_text()
+    properties=(root/"server.properties").read_text()
+    assert "server-port=19132" in properties
+    assert "server-portv6=19132" in properties
+    assert "enable-lan-visibility=false" in properties
 
 
 def test_server_logs_read_rotated_file_tail_without_subprocess(monkeypatch, tmp_path):
