@@ -105,7 +105,7 @@ def telemetry(sid):
         stat2=(proc/"stat").read_text().split()
         total2=sum(int(x) for x in Path("/proc/stat").read_text().splitlines()[0].split()[1:])
         ticks2=int(stat2[13])+int(stat2[14])
-        cpu=max(0.0,100.0*os.cpu_count()*(ticks2-ticks1)/max(1,total2-total1))
+        cpu=max(0.0,100.0*(os.cpu_count() or 1)*(ticks2-ticks1)/max(1,total2-total1))
         mem_total=int(re.search(r"MemTotal:\s+(\d+)",Path("/proc/meminfo").read_text()).group(1))*1024
         mem=rss_kb*1024
         return {"status":"running","pid":pid,"cpu_percent":round(cpu,1),"memory_bytes":mem,"memory_percent":round(100*mem/max(1,mem_total),2)}
