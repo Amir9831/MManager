@@ -58,6 +58,21 @@ def web_menu():
    print(f"Panel: http://{ip}:{cfg['port']}/{cfg['path']}/")
   else: print("Invalid selection")
 
+
+def update_manager():
+ print("\\nChecking for MManager updates...")
+ if os.geteuid()!=0:
+  print("Run the CLI with sudo to update MManager."); return
+ import urllib.request
+ url="https://raw.githubusercontent.com/Amir9831/MManager/main/install.sh"
+ try:
+  req=urllib.request.Request(url,headers={"User-Agent":"MManager-Updater"})
+  with urllib.request.urlopen(req,timeout=30) as response: script=response.read()
+  if not script.startswith(b"#!/usr/bin/env bash"): raise RuntimeError("Unexpected installer content")
+  print("Starting official installer. Existing worlds and backups are preserved.")
+  subprocess.run(["/usr/bin/bash","-s"],input=script,check=True)
+ except Exception as exc: print("[UPDATE FAILED]",exc)
+
 def main():
  while True:
   print("\nMManager\n1 Servers\n2 Restart Core\n3 Restart Web\n4 Start services\n5 Stop services\n6 Diagnostics\n7 Web panel management\n0 Exit")
@@ -83,5 +98,5 @@ def main():
   elif c=="5":
    ctl("stop","mmanager-web.service"); ctl("stop","mmanager-core.service")
   elif c=="6": subprocess.run(["systemctl","--failed","--no-pager"])
-  elif c=="7": web_menu()
+  elif c=="7": web_menu()\n  elif c=="8": update_manager()
   else: print("Invalid selection")
