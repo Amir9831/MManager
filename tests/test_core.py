@@ -284,3 +284,38 @@ def test_tcp_and_udp_can_share_same_numeric_port(monkeypatch, tmp_path):
         )
     item = core.create_server("bedrockshare", "bedrock", "1.26.63", "bedrock", True)
     assert item["java_port"] == 19132
+
+
+
+def test_store_migration_keeps_core_available_with_legacy_udp_collision(monkeypatch, tmp_path):
+    import sqlite3
+
+    data = tmp_path / "legacy-data"
+    data.mkdir()
+    db_path = data / "legacy.db"
+    monkeypatch.setattr(store, "DATA", data)
+    monkeypatch.setattr(store, "DB", db_path)
+    db = sqlite3.connect(db_path)
+    db.execute(
+        "CREATE TABLE servers(id TEXT PRIMARY KEY,name TEXT UNIQUE NOT NULL,edition TEXT NOT NULL,"
+        "software TEXT NOT NULL DEFAULT 'vanilla',version TEXT NOT NULL,java_port INTEGER,"
+        "bedrock_port INTEGER,directory TEXT NOT NULL,eula_accepted INTEGER NOT NULL DEFAULT 0,"
+        "created_at TEXT DEFAULT CURRENT_TIMESTAMP)"
+    )
+    db.execute(
+        "INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory) "
+        "VALUES('b','bedrock','bedrock','bedrock','1.26.63',19132,NULL,'/tmp/bedrock')"
+    )
+    db.execute(
+        "INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory) "
+        "VALUES('c','crossplay','crossplay','paper','1.21.4',25565,19132,'/tmp/crossplay')"
+    )
+    db.execute("CREATE UNIQUE INDEX ux_servers_java_port ON servers(java_port) WHERE java_port IS NOT NULL")
+    db.execute("CREATE UNIQUE INDEX ux_servers_bedrock_port ON servers(bedrock_port) WHERE bedrock_port IS NOT NULL")
+    db.commit()
+    db.close()
+
+    with store.connect() as migrated:
+        assert migrated.execute("SELECT COUNT(*) FROM servers").fetchone()[0] == 2
+        indexes = {row[1] for row in migrated.execute("PRAGMA index_list(servers)")}
+        assert "ix_servers_udp_port" in indexes
