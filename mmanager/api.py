@@ -5,7 +5,7 @@ from pathlib import Path
 from .webconfig import load as load_web_config
 from pydantic import BaseModel,Field
 from . import store,core,auth,advanced
-app=FastAPI(title="MManager API",version="0.3.0")
+app=FastAPI(title="MManager API",version="0.4.0")
 app.add_middleware(CORSMiddleware,allow_origins=[],allow_credentials=False,allow_methods=["GET","POST","PUT","DELETE"],allow_headers=["Content-Type","Authorization"])
 class Login(BaseModel): password:str=Field(min_length=1,max_length=256)
 class SetupServer(BaseModel):
@@ -33,7 +33,7 @@ def current_server():
  rows=store.list_servers()
  return rows[0] if rows else None
 @app.get("/api/health")
-def health(): return {"status":"ok","version":"0.3.0"}
+def health(): return {"status":"ok","version":"0.4.0"}
 @app.post("/api/login")
 def login(p:Login,request:Request):
  token=auth.verify_login(p.password,request.client.host if request.client else "unknown")
