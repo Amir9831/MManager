@@ -106,10 +106,14 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
  try:
   with store.connect() as db:
    db.execute("BEGIN IMMEDIATE")
-   used_tcp={r[0] for r in db.execute("SELECT java_port FROM servers WHERE java_port IS NOT NULL")}
-   item["java_port"]=choose_port(19132 if edition=="bedrock" else 25565,"udp" if edition=="bedrock" else "tcp",used_tcp)
+   used_tcp={r[0] for r in db.execute("SELECT java_port FROM servers WHERE edition!='bedrock' AND java_port IS NOT NULL")}
+   used_udp={r[0] for r in db.execute("SELECT bedrock_port FROM servers WHERE bedrock_port IS NOT NULL")}
+   used_udp.update(r[0] for r in db.execute("SELECT java_port FROM servers WHERE edition='bedrock' AND java_port IS NOT NULL"))
+   if edition=="bedrock":
+    item["java_port"]=choose_port(19132,"udp",used_udp)
+   else:
+    item["java_port"]=choose_port(25565,"tcp",used_tcp)
    if edition=="crossplay":
-    used_udp={r[0] for r in db.execute("SELECT bedrock_port FROM servers WHERE bedrock_port IS NOT NULL")}
     item["bedrock_port"]=choose_port(19132,"udp",used_udp)
    db.execute("INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory,eula_accepted) VALUES(:id,:name,:edition,:software,:version,:java_port,:bedrock_port,:directory,:eula_accepted)",item);db.commit()
   artifact=_bedrock(version) if edition=="bedrock" else (_vanilla(version) if software=="vanilla" else _paper(version))
@@ -514,10 +518,11 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
         used_tcp = set()
         used_udp = set()
         with store.connect() as db:
-            used_tcp = {r[0] for r in db.execute("SELECT java_port FROM servers WHERE id<>? AND java_port IS NOT NULL", (sid,))}
+            used_tcp = {r[0] for r in db.execute("SELECT java_port FROM servers WHERE id<>? AND edition!='bedrock' AND java_port IS NOT NULL", (sid,))}
             used_udp = {r[0] for r in db.execute("SELECT bedrock_port FROM servers WHERE id<>? AND bedrock_port IS NOT NULL", (sid,))}
+            used_udp.update(r[0] for r in db.execute("SELECT java_port FROM servers WHERE id<>? AND edition='bedrock' AND java_port IS NOT NULL", (sid,)))
         if edition == "bedrock":
-            java_port = choose_port(19132, "udp", used_udp | used_tcp)
+            java_port = choose_port(19132, "udp", used_udp)
             bedrock_port = None
         else:
             java_port = choose_port(25565, "tcp", used_tcp)
@@ -648,6 +653,41 @@ def delete_server(sid, confirm=False):
         raise
     return {"deleted": True, "id": sid, "cleanup_warnings": cleanup_warnings}
 
+def _service_listening_ports(item, protocol):
+    """Return listening ports owned by this server's systemd MainPID."""
+    unit = f"mmanager-mc@{item['name']}.service"
+    pid_result = subprocess.run(
+        ["/usr/bin/systemctl", "show", "--property=MainPID", "--value", unit],
+        capture_output=True, text=True, timeout=10,
+    )
+    if pid_result.returncode:
+        raise ManagerError("GM-222: Cannot read Minecraft service MainPID")
+    try:
+        pid = int(pid_result.stdout.strip() or "0")
+    except ValueError:
+        pid = 0
+    if pid <= 0:
+        return set()
+    ss_path = shutil.which("ss")
+    if not ss_path:
+        raise ManagerError("GM-223: ss is unavailable; cannot verify listening ports")
+    args = [ss_path, "-H", "-lntp"] if protocol == "tcp" else [ss_path, "-H", "-lunp"]
+    result = subprocess.run(args, capture_output=True, text=True, timeout=10)
+    if result.returncode:
+        raise ManagerError("GM-223: Cannot inspect listening sockets")
+    ports = set()
+    for line in result.stdout.splitlines():
+        if not re.search(r"\\bpid=" + str(pid) + r"(?:,|\\))", line):
+            continue
+        fields = line.split()
+        if len(fields) < 4:
+            continue
+        match = re.search(r":([0-9]+)$", fields[3])
+        if match:
+            ports.add(int(match.group(1)))
+    return ports
+
+
 def server_status(sid):
     item = store.get_server(sid)
     if not item:
@@ -655,5 +695,44 @@ def server_status(sid):
     try:
         active = _active(item)
     except ManagerError as exc:
-        return {"status": "unknown", "error": str(exc)}
-    return {"status": "running" if active else "stopped"}
+        return {"status": "unknown", "health": "unknown", "error": str(exc)}
+    if not active:
+        return {"status": "stopped", "health": "stopped", "expected": [], "listening": []}
+
+    if item["edition"] == "bedrock":
+        expected = [("udp", item["java_port"])]
+    elif item["edition"] == "crossplay":
+        expected = [("tcp", item["java_port"]), ("udp", item["bedrock_port"])]
+    else:
+        expected = [("tcp", item["java_port"])]
+
+    try:
+        cache = {}
+        listening = []
+        missing = []
+        for protocol, port in expected:
+            if port is None:
+                missing.append({"protocol": protocol, "port": None})
+                continue
+            if protocol not in cache:
+                cache[protocol] = _service_listening_ports(item, protocol)
+            entry = {"protocol": protocol, "port": int(port)}
+            if int(port) in cache[protocol]:
+                listening.append(entry)
+            else:
+                missing.append(entry)
+        if missing:
+            details = ", ".join(f"{x['protocol'].upper()}/{x['port']}" for x in missing)
+            return {
+                "status": "degraded", "health": "degraded",
+                "expected": [{"protocol": p, "port": port} for p, port in expected],
+                "listening": listening,
+                "error": "Service is active, but expected socket(s) are not owned by its process: " + details,
+            }
+        return {
+            "status": "running", "health": "healthy",
+            "expected": [{"protocol": p, "port": port} for p, port in expected],
+            "listening": listening,
+        }
+    except (ManagerError, OSError, subprocess.TimeoutExpired) as exc:
+        return {"status": "unknown", "health": "unknown", "error": str(exc)}
