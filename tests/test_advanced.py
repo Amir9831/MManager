@@ -40,3 +40,37 @@ def test_update_and_rollback_preserve_previous_binary(monkeypatch,tmp_path):
     assert rolled["rolled_back"] is True
     assert store.get_server(item["id"])["version"]=="1.21.4"
     assert jar.read_bytes()==before
+
+def test_bedrock_update_preserves_world_and_settings(monkeypatch,tmp_path):
+    import zipfile
+    monkeypatch.setattr(store,"DATA",tmp_path/"data")
+    monkeypatch.setattr(store,"DB",tmp_path/"data"/"test.db")
+    monkeypatch.setattr(settings,"SERVERS",tmp_path/"servers")
+    monkeypatch.setattr(settings,"BACKUPS",tmp_path/"backups")
+    monkeypatch.setattr(settings,"ROOT",tmp_path/"root")
+    monkeypatch.setattr(core,"choose_port",lambda p,proto,reserved:p)
+    monkeypatch.setattr(core,"_bedrock",lambda v:{"url":"https://invalid.test/"+v+".zip","checksum":None,"algorithm":"sha256"})
+    current={"version":"1.26.63"}
+    def download(url,dest,*args):
+        binary=("BDS-"+url.rsplit("/",1)[-1]).encode()
+        with zipfile.ZipFile(dest,"w") as z:
+            z.writestr("bedrock_server",binary)
+            z.writestr("server.properties","server-name=archive-default\n")
+    monkeypatch.setattr(core,"_download",download)
+    monkeypatch.setattr(core,"_active",lambda item:False)
+    monkeypatch.setattr(core,"_systemctl",lambda action,item:None)
+    item=core.create_server("bedrock","bedrock","1.26.63","bedrock",True)
+    root=Path(item["directory"])
+    (root/"worlds").mkdir()
+    (root/"worlds"/"world.db").write_text("important world")
+    (root/"server.properties").write_text("server-name=My Server\n")
+    before=(root/"bedrock_server").read_bytes()
+    result=core.update_server(item["id"],"1.26.64")
+    assert result["updated"] is True
+    assert (root/"bedrock_server").read_bytes()!=before
+    assert (root/"worlds"/"world.db").read_text()=="important world"
+    assert (root/"server.properties").read_text()=="server-name=My Server\n"
+    core.rollback_server(item["id"])
+    assert (root/"bedrock_server").read_bytes()==before
+    assert (root/"worlds"/"world.db").read_text()=="important world"
+    assert store.get_server(item["id"])["version"]=="1.26.63"
