@@ -75,7 +75,7 @@ OLD=""; [[ -L /opt/mmanager/current ]] && OLD=$(readlink -f /opt/mmanager/curren
 ln -sfn "$RELEASE" /opt/mmanager/current.next; mv -Tf /opt/mmanager/current.next /opt/mmanager/current
 ln -sfn /opt/mmanager/current/venv/bin/Mmanager /usr/local/bin/Mmanager
 cat >/etc/sudoers.d/mmanager <<'SUDO'
-mmanager ALL=(root) NOPASSWD: /usr/bin/systemctl start mmanager-mc@*.service, /usr/bin/systemctl stop mmanager-mc@*.service, /usr/bin/systemctl restart mmanager-mc@*.service, /usr/bin/systemctl is-active mmanager-mc@*.service, /usr/bin/systemctl is-active --quiet mmanager-mc@*.service, /usr/bin/journalctl -u mmanager-mc@*.service --no-pager -o cat -n *
+mmanager ALL=(root) NOPASSWD: /usr/bin/systemctl start mmanager-mc@*.service, /usr/bin/systemctl stop mmanager-mc@*.service, /usr/bin/systemctl restart mmanager-mc@*.service, /usr/bin/systemctl is-active mmanager-mc@*.service, /usr/bin/systemctl is-active --quiet mmanager-mc@*.service, /usr/bin/systemctl show mmanager-mc@*.service --property=MainPID --value, /usr/bin/journalctl -u mmanager-mc@*.service --no-pager -o cat -n *
 SUDO
 chmod 0440 /etc/sudoers.d/mmanager; visudo -cf /etc/sudoers.d/mmanager >/dev/null
 for unit in mmanager-core.service mmanager-web.service mmanager-mc@.service; do install -o root -g root -m 0644 "/opt/mmanager/current/systemd/$unit" "/etc/systemd/system/$unit"; done
