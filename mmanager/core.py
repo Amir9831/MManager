@@ -10,7 +10,9 @@ def _json(url):
 def _download(url,dest,expected=None,algorithm="sha256"):
  tmp=Path(str(dest)+".part");total=0;digest=__import__("hashlib").new(algorithm)
  try:
-  req=urllib.request.Request(url,headers={"User-Agent":"MManager/0.2 (https://github.com/Amir9831/MManager)"})
+  # Mojang Bedrock CDN may stall/reset requests from non-browser User-Agents.
+ ua = "Mozilla/5.0" if "minecraft.net/" in url else "MManager/0.2 (https://github.com/Amir9831/MManager)"
+ req=urllib.request.Request(url,headers={"User-Agent":ua})
   with urllib.request.urlopen(req,timeout=60) as r,tmp.open("wb") as out:
    while True:
     chunk=r.read(1024*1024)
