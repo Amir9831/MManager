@@ -52,10 +52,14 @@ def configure_rcon(sid, enabled, password=None, port=25575):
     item=_server(sid)
     if item["edition"]=="bedrock": raise ManagerError("Bedrock Dedicated Server does not provide Minecraft RCON.")
     if not 1024 <= int(port) <= 65535: raise ManagerError("RCON port must be between 1024 and 65535.")
+    if int(port) in {int(item.get("java_port") or 0),int(item.get("bedrock_port") or 0),8765}:
+        raise ManagerError("RCON port conflicts with a Minecraft or internal Core port.")
+    from .webconfig import load as load_web_config
+    if int(port)==int(load_web_config()["port"]): raise ManagerError("RCON port conflicts with the public web panel port.")
     if enabled and (not password or len(password)<16 or len(password)>128):
         raise ManagerError("Set an RCON password of at least 16 characters.")
     from .core import update_server_settings
-    changes={"enable-rcon":"true" if enabled else "false","rcon.port":str(int(port)),"rcon.ip":"127.0.0.1"}
+    changes={"enable-rcon":"true" if enabled else "false","rcon.port":str(int(port))}
     changes["rcon.password"]=password if enabled else ""
     result=update_server_settings(sid,changes)
     return {"enabled":bool(enabled),"port":int(port),"restart_required":True,"saved":True}
