@@ -294,20 +294,14 @@ def _read_json(path, default):
 def _bedrock_online(item):
     logs = _recent_server_logs(item)
     states = {}
+    pattern = re.compile(r"Player (connected|disconnected):\\s*(.+?),\\s*xuid:\\s*([0-9]+)", re.I)
     for line in logs.splitlines():
-        lowered = line.lower()
-        kind = "connected" if "player connected:" in lowered else "disconnected" if "player disconnected:" in lowered else None
-        if not kind:
+        match = pattern.search(line)
+        if not match:
             continue
-        marker = "player " + kind + ":"
-        payload = line[lowered.index(marker) + len(marker):].strip()
-        parts = re.split(r",\s*xuid:\s*", payload, maxsplit=1, flags=re.I)
-        if len(parts) != 2 or not re.fullmatch(r"[0-9]+", parts[1].strip()):
-            continue
-        name, xuid = parts[0].strip(), parts[1].strip()
-        if not name:
-            continue
-        states[name.lower()] = {"name": name, "xuid": xuid, "online": kind == "connected"}
+        event, name, xuid = match.group(1).lower(), match.group(2).strip(), match.group(3)
+        if name:
+            states[name.lower()] = {"name": name, "xuid": xuid, "online": event == "connected"}
     return [player for player in states.values() if player["online"]]
 def _proc_cpu_ticks(raw):
     """Read utime+stime from /proc/<pid>/stat without being confused by spaces in comm."""
