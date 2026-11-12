@@ -74,8 +74,10 @@ def _validate_zip(zf, max_expanded=8 * 1024**3):
 def upload_world(sid, name, fileobj, original_filename):
     item = _server(sid)
     name = _world_name(name)
-    if not str(original_filename or "").lower().endswith(".zip"):
-        raise core.ManagerError("World upload must be a ZIP archive.")
+    filename = str(original_filename or "").lower()
+    accepted = (".mcworld", ".zip") if item["edition"] == "bedrock" else (".zip",)
+    if not filename.endswith(accepted):
+        raise core.ManagerError("Bedrock worlds must be .mcworld or .zip; Java worlds must be .zip.")
     if core._active(item):
         raise core.ManagerError("Stop the server before uploading a world.")
     root = _world_root(item)
