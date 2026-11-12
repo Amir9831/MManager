@@ -143,6 +143,11 @@ def plugins(_:bool=Depends(secured)):
 def search_plugins(q:str,_:bool=Depends(secured)):
  try:return advanced.plugin_search(q)
  except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+
+@app.get("/api/plugins/{project_id}/versions")
+def plugin_versions(project_id:str,game_version:str,_:bool=Depends(secured)):
+ try:return advanced.plugin_versions(project_id,game_version)
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
 @app.post("/api/server/plugins")
 def add_plugin(p:PluginInstall,_:bool=Depends(secured)):
  item=current_server()
