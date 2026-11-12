@@ -224,8 +224,8 @@ def test_java_update_reapplies_allocated_listener_ports(monkeypatch, tmp_path):
     item = core.create_server("updatejava", "java", "1.21.4", "vanilla", True)
     root = Path(item["directory"])
     (root / "server.properties").write_text(
-        "server-port=7551\\nquery.port=7551\\nserver-ip=127.0.0.1\\n"
-        "enable-query=true\\nenable-rcon=true\\nmotd=Keep me\\n"
+        "server-port=7551\nquery.port=7551\nserver-ip=127.0.0.1\n"
+        "enable-query=true\nenable-rcon=true\nmotd=Keep me\n"
     )
     monkeypatch.setattr(core, "_active", lambda item: False)
     monkeypatch.setattr(core, "create_backup", lambda sid: {"id": "backup-java", "filename": "backup.tar.gz"})
@@ -255,8 +255,8 @@ def test_bedrock_update_reapplies_allocated_udp_ports(monkeypatch, tmp_path):
     item = core.create_server("updatebedrock", "bedrock", "1.26.62", "bedrock", True)
     root = Path(item["directory"])
     (root / "server.properties").write_text(
-        "server-port=7551\\nserver-portv6=7552\\nenable-lan-visibility=true\\n"
-        "server-name=Keep me\\n"
+        "server-port=7551\nserver-portv6=7552\nenable-lan-visibility=true\n"
+        "server-name=Keep me\n"
     )
     monkeypatch.setattr(core, "_active", lambda item: False)
     monkeypatch.setattr(core, "create_backup", lambda sid: {"id": "backup-bedrock", "filename": "backup.tar.gz"})
@@ -272,12 +272,12 @@ def test_crossplay_update_reapplies_java_and_geyser_ports(monkeypatch, tmp_path)
     setup(monkeypatch, tmp_path)
     item = core.create_server("updatecross", "crossplay", "1.21.4", "paper", True)
     root = Path(item["directory"])
-    (root / "server.properties").write_text("server-port=7551\\nquery.port=7551\\n")
+    (root / "server.properties").write_text("server-port=7551\nquery.port=7551\n")
     geyser_path = root / "plugins" / "Geyser-Spigot" / "config.yml"
     geyser_path.write_text(
-        "bedrock:\\n  address: 127.0.0.1\\n  port: 7551\\n"
-        "remote:\\n  address: localhost\\n  port: 7552\\n"
-        "  auth-type: floodgate\\n"
+        "bedrock:\n  address: 127.0.0.1\n  port: 7551\n"
+        "remote:\n  address: localhost\n  port: 7552\n"
+        "  auth-type: floodgate\n"
     )
     monkeypatch.setattr(core, "_active", lambda item: False)
     monkeypatch.setattr(core, "create_backup", lambda sid: {"id": "backup-cross", "filename": "backup.tar.gz"})
@@ -291,4 +291,3 @@ def test_crossplay_update_reapplies_java_and_geyser_ports(monkeypatch, tmp_path)
     assert geyser["remote"]["address"] == "127.0.0.1"
     assert geyser["remote"]["port"] == item["java_port"]
     assert geyser["remote"]["auth-type"] == "floodgate"
-\n
