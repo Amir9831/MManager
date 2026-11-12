@@ -43,3 +43,8 @@ Admin credentials: `/root/mmanager-admin-credentials.txt` (mode 0600). On a fres
 - The panel should be exposed through HTTPS using a trusted reverse proxy for Internet-facing deployments. The random URL path is an additional layer, not a replacement for authentication.
 
 Version 0.7.0 keeps the public panel on HTTP as requested; use a trusted HTTPS reverse proxy when exposing it beyond a trusted network. Back up important worlds before upgrades or plugin changes and review [SECURITY.md](SECURITY.md) and [docs/INSTALL.md](docs/INSTALL.md).
+
+
+## Bedrock networking (BDS 1.26.60+)
+
+MManager configures Bedrock Dedicated Server 1.26.60 and newer to use NetherNet: `server-port` is the TCP signaling port, while gameplay uses UDP ports from `server-udp-ports` (`49152-49200`). Permit TCP on the configured server port and UDP on `49152-49200` in both the host firewall and provider firewall. The UDP 7551 socket is LAN discovery, not the gameplay listener. Older BDS releases continue to use the legacy RakNet UDP listener.

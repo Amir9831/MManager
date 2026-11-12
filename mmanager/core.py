@@ -6,7 +6,16 @@ from . import store,settings
 from .ports import choose_port
 NAME=re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{1,31}$")
 SERVER_LOG_DIR=Path(os.environ.get("MMANAGER_LOG_DIR","/var/log/mmanager/servers"))
+BEDROCK_NETHERNET_MIN_VERSION=(1,26,60)
+BEDROCK_UDP_PORT_RANGE="49152-49200"
 class ManagerError(Exception):pass
+
+def _bedrock_uses_nethernet(version):
+ match=re.match(r"^(\d+)\.(\d+)\.(\d+)",str(version))
+ return bool(match and tuple(map(int,match.groups()))>=BEDROCK_NETHERNET_MIN_VERSION)
+
+def _bedrock_port_protocol(version):
+ return "tcp" if _bedrock_uses_nethernet(version) else "udp"
 def _json(url):
  req=urllib.request.Request(url,headers={"User-Agent":"MManager/0.2"})
  with urllib.request.urlopen(req,timeout=25) as r:return json.load(r)
@@ -107,11 +116,16 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
  try:
   with store.connect() as db:
    db.execute("BEGIN IMMEDIATE")
-   used_tcp={r[0] for r in db.execute("SELECT java_port FROM servers WHERE edition!='bedrock' AND java_port IS NOT NULL")}
+   used_tcp=set()
    used_udp={r[0] for r in db.execute("SELECT bedrock_port FROM servers WHERE bedrock_port IS NOT NULL")}
-   used_udp.update(r[0] for r in db.execute("SELECT java_port FROM servers WHERE edition='bedrock' AND java_port IS NOT NULL"))
+   for row in db.execute("SELECT edition,version,java_port FROM servers WHERE java_port IS NOT NULL"):
+    if row["edition"]=="bedrock" and _bedrock_port_protocol(row["version"])=="udp":
+     used_udp.add(row["java_port"])
+    else:
+     used_tcp.add(row["java_port"])
    if edition=="bedrock":
-    item["java_port"]=choose_port(19132,"udp",used_udp)
+    protocol=_bedrock_port_protocol(version)
+    item["java_port"]=choose_port(19132,protocol,used_tcp if protocol=="tcp" else used_udp)
    else:
     item["java_port"]=choose_port(25565,"tcp",used_tcp)
    if edition=="crossplay":
@@ -131,7 +145,7 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
    binary.chmod(0o750)
    props=(Path(__file__).parent/"templates"/"bedrock-server.properties").read_text()
    (d/"server.properties").write_text(props)
-   _configure_bedrock_properties(d/"server.properties",item["java_port"])
+   _configure_bedrock_properties(d/"server.properties",item["java_port"],version)
    (d/"run.sh").write_text("#!/bin/sh\ncd /var/lib/mmanager/servers/"+name+"\nLD_LIBRARY_PATH=. exec ./bedrock_server\n")
   else:
    (d/"eula.txt").write_text("eula=true\n")
@@ -344,7 +358,7 @@ def update_server(sid, version):
             # Reapply MManager-owned listener settings after replacing the runtime.
             # This repairs stale/default ports while preserving unrelated user settings.
             if item["edition"] == "bedrock":
-                _configure_bedrock_properties(stage / "server.properties", item["java_port"])
+                _configure_bedrock_properties(stage / "server.properties", item["java_port"], version)
             else:
                 _configure_java_properties(stage / "server.properties", item["java_port"])
             if item["edition"] == "crossplay":
@@ -415,7 +429,7 @@ def _write_server_runtime(root, edition, software, version, java_port, bedrock_p
         binary.chmod(0o750)
         props = (Path(__file__).parent / "templates" / "bedrock-server.properties").read_text()
         (root / "server.properties").write_text(props)
-        _configure_bedrock_properties(root / "server.properties", java_port)
+        _configure_bedrock_properties(root / "server.properties", java_port, version)
         (root / "run.sh").write_text("#!/bin/sh\ncd \"$(dirname \"$0\")\"\nLD_LIBRARY_PATH=. exec ./bedrock_server\n")
     else:
         artifact = _vanilla(version) if software == "vanilla" else _paper(version)
@@ -473,14 +487,30 @@ def _configure_geyser(path, bedrock_port, java_port):
     path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True))
 
 
-def _configure_bedrock_properties(path, port):
-    """Apply the documented BDS port settings and disable default-port LAN discovery."""
+def _configure_bedrock_properties(path, port, version):
+    """Configure classic RakNet or modern NetherNet listener ports for this BDS release."""
     for key, value in (
         ("server-port", port),
         ("server-portv6", port),
         ("enable-lan-visibility", "false"),
+        ("enable-lan-broadcast", "false"),
     ):
         _set_property_file(path, key, str(value))
+    if _bedrock_uses_nethernet(version):
+        _set_property_file(path, "transport", "nethernet")
+        _set_property_file(path, "server-udp-ports", BEDROCK_UDP_PORT_RANGE)
+    else:
+        _remove_property_file(path, "transport")
+        _remove_property_file(path, "server-udp-ports")
+
+
+def _remove_property_file(path, key):
+    path = Path(path)
+    if not path.exists():
+        return
+    rows = path.read_text(errors="replace").splitlines()
+    rows = [row for row in rows if not (row and not row.lstrip().startswith("#") and "=" in row and row.split("=", 1)[0].strip() == key)]
+    path.write_text("\n".join(rows) + "\n")
 
 
 def _set_property_file(path, key, value):
@@ -568,14 +598,18 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
                 raise ManagerError("Unsupported edition transition.")
         # Preserve a stable TCP/UDP port allocation in the registry.
         with store.connect() as db:
-            used_tcp = {r[0] for r in db.execute(
-                "SELECT java_port FROM servers WHERE id<>? AND edition!='bedrock' AND java_port IS NOT NULL", (sid,))}
+            used_tcp = set()
             used_udp = {r[0] for r in db.execute(
                 "SELECT bedrock_port FROM servers WHERE id<>? AND bedrock_port IS NOT NULL", (sid,))}
-            used_udp.update(r[0] for r in db.execute(
-                "SELECT java_port FROM servers WHERE id<>? AND edition='bedrock' AND java_port IS NOT NULL", (sid,)))
+            for row in db.execute(
+                "SELECT edition,version,java_port FROM servers WHERE id<>? AND java_port IS NOT NULL", (sid,)):
+                if row["edition"] == "bedrock" and _bedrock_port_protocol(row["version"]) == "udp":
+                    used_udp.add(row["java_port"])
+                else:
+                    used_tcp.add(row["java_port"])
         if edition == "bedrock":
-            java_port = choose_port(19132, "udp", used_udp)
+            protocol = _bedrock_port_protocol(version)
+            java_port = choose_port(19132, protocol, used_tcp if protocol == "tcp" else used_udp)
             bedrock_port = None
         else:
             java_port = choose_port(25565, "tcp", used_tcp)
@@ -583,7 +617,7 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
         if edition != "bedrock":
             _configure_java_properties(stage / "server.properties", java_port)
         else:
-            _configure_bedrock_properties(stage / "server.properties", java_port)
+            _configure_bedrock_properties(stage / "server.properties", java_port, version)
         if edition == "crossplay":
             geyser_cfg = stage / "plugins" / "Geyser-Spigot" / "config.yml"
             _configure_geyser(geyser_cfg, bedrock_port, java_port)
