@@ -1,9 +1,9 @@
 from fastapi import FastAPI,HTTPException,Depends,Header,Request
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware\nfrom fastapi.staticfiles import StaticFiles\nfrom pathlib import Path\nfrom .webconfig import load as load_web_config
 from pydantic import BaseModel,Field
 from . import store,core,auth
 app=FastAPI(title="MManager API",version="0.2.0")
-app.add_middleware(CORSMiddleware,allow_origins=["http://127.0.0.1:8766","http://localhost:8766"],allow_credentials=False,allow_methods=["GET","POST"],allow_headers=["Content-Type","Authorization"])
+app.add_middleware(CORSMiddleware,allow_origins=[],allow_credentials=False,allow_methods=["GET","POST"],allow_headers=["Content-Type","Authorization"])
 class Login(BaseModel): password:str=Field(min_length=1,max_length=256)
 class CreateServer(BaseModel):
  name:str=Field(min_length=2,max_length=32); edition:str="java"; software:str="vanilla"; version:str=Field(min_length=1,max_length=40); accept_eula:bool=False
@@ -11,7 +11,7 @@ def secured(authorization:str|None=Header(default=None)):
  token=authorization[7:] if authorization and authorization.startswith("Bearer ") else ""
  if not auth.verify_token(token): raise HTTPException(401,detail="Authentication required")
  return True
-@app.get("/api/health")
+app.mount("/", StaticFiles(directory=str(Path(__file__).parent / "web"), html=True), name="panel")\n\n@app.get("/api/health")
 def health(): return {"status":"ok","version":"0.2.0"}
 @app.post("/api/login")
 def login(p:Login,request:Request):
@@ -44,3 +44,31 @@ def backups(sid:str,_:bool=Depends(secured)):
 def restore(sid:str,bid:str,confirm:bool=False,_:bool=Depends(secured)):
  try: return core.restore_backup(sid,bid,confirm)
  except (core.ManagerError,OSError,ValueError) as e: raise HTTPException(400,detail=str(e))
+
+class PathPrefixApp:
+    """Expose the API and static panel only beneath the configured secret path."""
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.inner(scope, receive, send)
+            return
+        prefix = "/" + load_web_config()["path"]
+        path = scope.get("path", "/")
+        if path == prefix:
+            scope = dict(scope)
+            scope["path"] = "/"
+            scope["root_path"] = scope.get("root_path", "") + prefix
+        elif path.startswith(prefix + "/"):
+            scope = dict(scope)
+            scope["path"] = path[len(prefix):]
+            scope["root_path"] = scope.get("root_path", "") + prefix
+        else:
+            body = b'{"detail":"Not Found"}'
+            await send({"type":"http.response.start","status":404,"headers":[(b"content-type",b"application/json"),(b"content-length",str(len(body)).encode())]})
+            await send({"type":"http.response.body","body":body})
+            return
+        await self.inner(scope, receive, send)
+
+public_app = PathPrefixApp(app)
