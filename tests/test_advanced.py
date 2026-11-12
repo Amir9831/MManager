@@ -74,3 +74,23 @@ def test_bedrock_update_preserves_world_and_settings(monkeypatch,tmp_path):
     assert (root/"bedrock_server").read_bytes()==before
     assert (root/"worlds"/"world.db").read_text()=="important world"
     assert store.get_server(item["id"])["version"]=="1.26.63"
+
+def test_rcon_reassembles_multiple_packets(monkeypatch,tmp_path):
+    import struct
+    props=tmp_path/"server.properties"
+    props.write_text("enable-rcon=true\nrcon.password=long-password-value\nrcon.port=25575\n")
+    def response(reqid,payload):
+        body=struct.pack("<ii",reqid,0)+payload.encode()+b"\0\0"
+        return struct.pack("<i",len(body))+body
+    class FakeSocket:
+        def __init__(self):
+            self.data=bytearray(response(11,"")+response(12,"first")+response(12," second")+response(13,""))
+        def __enter__(self): return self
+        def __exit__(self,*args): return False
+        def settimeout(self,value): pass
+        def sendall(self,data): pass
+        def recv(self,size):
+            chunk=self.data[:size];del self.data[:size];return bytes(chunk)
+    monkeypatch.setattr(advanced.socket,"create_connection",lambda *a,**k:FakeSocket())
+    result=advanced._rcon({"edition":"java","directory":str(tmp_path)},"list")
+    assert result=="first second"
