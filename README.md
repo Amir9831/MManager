@@ -8,12 +8,30 @@ Minecraft server manager for Ubuntu 22.04 / 24.04 / 26.04.
 curl -fsSL https://raw.githubusercontent.com/Amir9831/MManager/main/install.sh | sudo bash
 ```
 
-Admin credentials: `/root/mmanager-admin-credentials.txt` (0600). After installation, the installer prints the public panel URL with its random path and port. Use `Mmanager` → **Web panel management** to change the path, administrator password, or port. The panel and its API share the same public port; the core API remains loopback-only.
+Admin credentials: `/root/mmanager-admin-credentials.txt` (mode 0600). The installer prints the public panel URL with its random path and port. Use `sudo Mmanager` → **Web panel management** to change the path, administrator password, or port. The panel and browser API share one public TCP port; the core API remains loopback-only.
 
-## مستندات فارسی\n\nراهنمای فارسی نصب، دسترسی عمومی، مدیریت Path/رمز/پورت و نکات امنیتی: [docs/FA.md](docs/FA.md).\n\n## Implemented
+## مستندات فارسی
 
-Interactive `Mmanager` CLI with an in-CLI updater; Argon2id login and bearer auth; single-server management for Java Vanilla/Paper, Bedrock Dedicated Server, and Paper + Geyser/Floodgate cross-play; live release catalogs; bundled Java/Bedrock/Geyser configuration templates; editable server.properties; systemd lifecycle; journal logs; compressed, server-pausing backups and guarded restore; responsive single-server web dashboard.
+راهنمای نصب، امنیت، تنظیمات پنل و توضیح قابلیت‌ها: [docs/FA.md](docs/FA.md).
 
-## Not yet implemented
+## Implemented
 
-RCON commands/live interactive console, player moderation, CPU/RAM telemetry, plugin manager, atomic Minecraft server binary updates/rollback and automated game-port firewall configuration. The public panel is protected by a random URL path and Argon2id login; use HTTPS via a trusted reverse proxy for Internet-facing deployments. This is an early functional release, not a claim of zero defects. See SECURITY.md and docs/INSTALL.md.
+- Interactive CLI and in-CLI MManager updater.
+- Argon2id administrator authentication and bearer-token API.
+- Single-server setup for Java Vanilla/Paper, Bedrock Dedicated Server, and Paper + Geyser/Floodgate cross-play.
+- Live release catalogs and bundled Java/Bedrock/Geyser templates.
+- Editable `server.properties`, systemd lifecycle, and journal logs.
+- Compressed backups, guarded restore, and safety backup before restore.
+- RCON console and player list / Kick / Ban / Pardon for Java/Paper servers.
+- Process-level CPU and RAM telemetry.
+- Modrinth plugin search/install/remove for Paper and Cross-play; installation requires the server to be stopped.
+- Minecraft server binary updates with pre-update backup and one-step rollback.
+
+## Explicit limitations
+
+- Automated game-port firewall configuration is not implemented. Open Java ports as TCP and Bedrock ports as UDP in UFW and the provider firewall.
+- Standard Minecraft RCON and RCON-based player moderation are not available for Bedrock Dedicated Server.
+- Plugin management is supported only on Paper-based servers (Paper and Cross-play), not Vanilla or Bedrock.
+- The panel should be exposed through HTTPS using a trusted reverse proxy for Internet-facing deployments. The random URL path is an additional layer, not a replacement for authentication.
+
+MManager is an early functional release. Back up important worlds before upgrades or plugin changes and review [SECURITY.md](SECURITY.md) and [docs/INSTALL.md](docs/INSTALL.md).
