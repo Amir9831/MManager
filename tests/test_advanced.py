@@ -192,3 +192,27 @@ def test_bedrock_online_players_use_file_backed_service_logs(monkeypatch, tmp_pa
     assert advanced._bedrock_online({"name": "bedrock-test"}) == [
         {"name": "Steve", "xuid": "67890", "online": True}
     ]
+
+
+def test_geyser_settings_read_update_and_validate(monkeypatch, tmp_path):
+    _setup_player_tests(monkeypatch, tmp_path)
+    item = core.create_server("geysercfg", "crossplay", "1.21.4", "paper", True)
+    current = advanced.geyser_settings(item["id"])
+    assert current["bedrock_port"] == item["bedrock_port"]
+    assert current["auth_type"] == "floodgate"
+    result = advanced.update_geyser_settings(item["id"], {
+        "bedrock_port": 19133,
+        "remote_address": "127.0.0.1",
+        "remote_port": 25566,
+        "auth_type": "online",
+        "passthrough_motd": False,
+        "passthrough_player_counts": True,
+        "debug_mode": True,
+    })
+    assert result["saved"] is True
+    assert result["restart_required"] is True
+    assert result["bedrock_port"] == 19133
+    assert result["remote_address"] == "127.0.0.1"
+    assert result["auth_type"] == "online"
+    with pytest.raises(core.ManagerError, match="Bedrock UDP port"):
+        advanced.update_geyser_settings(item["id"], {"bedrock_port": 70000})
