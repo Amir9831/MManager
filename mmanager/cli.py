@@ -98,5 +98,6 @@ def main():
   elif c=="5":
    ctl("stop","mmanager-web.service"); ctl("stop","mmanager-core.service")
   elif c=="6": subprocess.run(["systemctl","--failed","--no-pager"])
-  elif c=="7": web_menu()\n  elif c=="8": update_manager()
+  elif c=="7": web_menu()
+  elif c=="8": update_manager()
   else: print("Invalid selection")
