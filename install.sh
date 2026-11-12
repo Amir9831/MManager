@@ -309,5 +309,4 @@ else
  echo "Existing administrator credentials preserved; no password was printed."
 fi
 echo "Manage panel path, password and port from the MManager CLI (option 7)."
-if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then ufw allow "$PANEL_PORT/tcp" || say "Could not update UFW; open TCP $PANEL_PORT manually"; fi
-echo "Allow TCP port $PANEL_PORT in your VPS/cloud firewall if applicable."
+echo "Firewall configuration is intentionally left untouched. Configure network access outside MManager if needed."
