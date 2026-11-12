@@ -11,3 +11,6 @@ Mmanager = "mmanager.cli:main"
 [tool.setuptools.packages.find]
 include = ["mmanager*"]
 exclude = ["tests*"]
+
+[tool.setuptools.package-data]
+mmanager = ["templates/*.properties", "templates/*.yml"]
