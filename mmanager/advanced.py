@@ -512,38 +512,6 @@ def players(sid):
             "raw": raw, "edition": item["edition"], "permission_model": "bedrock" if item["edition"] == "bedrock" else "java"}
 
 
-def moderate(sid, action, player, reason="", permission_level=4):
-    item = _server(sid)
-    player = str(player).strip()
-    if not re.fullmatch(r"[A-Za-z0-9_ .-]{1,32}", player) or player in {".", ".."}:
-        raise ManagerError("Invalid Minecraft player name.")
-    if action not in {"kick", "ban", "pardon", "op", "deop"}:
-        raise ManagerError("Unsupported moderation action.")
-    reason = re.sub(r"[\r\n\0]", " ", str(reason))[:160]
-    if item["edition"] == "bedrock":
-        if action == "op":
-            cmd = 'op "' + player + '"'
-        elif action == "deop":
-            cmd = 'deop "' + player + '"'
-        elif action == "kick":
-            cmd = 'kick "' + player + '"' + (" " + reason if reason else "")
-        elif action in {"ban", "pardon"}:
-            raise ManagerError("Bedrock Dedicated Server has no native player ban list. Use allowlist management to restrict access; this is not the same as a ban.")
-        return _bedrock_console(item, cmd)
-    if action == "op":
-        if not 1 <= int(permission_level) <= 4:
-            raise ManagerError("Java operator level must be between 1 and 4.")
-        command = "op " + player + " " + str(int(permission_level))
-    elif action == "deop":
-        command = "deop " + player
-    elif action == "kick":
-        command = "kick " + player + (" " + reason if reason else "")
-    elif action == "ban":
-        command = "ban " + player + (" " + reason if reason else "")
-    else:
-        command = "pardon " + player
-    return {"action": action, "player": player, "response": _rcon(item, command)}
-
 def plugin_search(query):
     query=str(query).strip()[:100]
     if not query: raise ManagerError("Enter a plugin name to search.")
