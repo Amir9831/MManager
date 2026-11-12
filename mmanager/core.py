@@ -429,7 +429,7 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
         raise ManagerError("GM-103: Software does not match target edition")
     if not re.fullmatch(r"[A-Za-z0-9._-]{1,40}", str(version)):
         raise ManagerError("GM-105: Invalid Minecraft version")
-    cross_edition = item["edition"] != edition and {item["edition"], edition} & {"bedrock"}
+    cross_edition = (item["edition"] == "bedrock") != (edition == "bedrock")
     if cross_edition and confirm_world_reset is not True:
         raise ManagerError("Switching between Java and Bedrock does not convert worlds. Explicitly confirm that the old world will be archived and a new world created.")
     if item["edition"] == edition and item["software"] == software and item["version"] == version:
