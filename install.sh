@@ -18,7 +18,7 @@ for pair in "libcurl4 libcurl4t64" "libssl3 libssl3t64"; do
  done
 done
 if apt-cache show openjdk-21-jre-headless >/dev/null 2>&1; then
- apt-get install -y ca-certificates curl tar python3 python3-venv python3-pip openjdk-21-jre-headless sudo "${BDS_RUNTIME_PKGS[@]}"
+ apt-get install -y ca-certificates curl tar python3 python3-venv python3-pip openjdk-21-jre-headless sudo policykit-1 "${BDS_RUNTIME_PKGS[@]}"
 else
  apt-get install -y ca-certificates curl tar wget gpg python3 python3-venv python3-pip sudo policykit-1 "${BDS_RUNTIME_PKGS[@]}"
  install -d -m 0755 /etc/apt/keyrings
