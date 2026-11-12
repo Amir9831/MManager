@@ -2,7 +2,7 @@
 import json, os, re, socket, struct, subprocess, time, urllib.parse, urllib.request
 from pathlib import Path
 from . import store
-from .core import ManagerError, _active
+from .core import ManagerError, _active, SERVER_LOG_DIR
 
 def _server(sid):
     item=store.get_server(sid)
@@ -95,14 +95,20 @@ def console(sid, command):
     return {"response": _rcon(item, command)}
 
 
-def _java_online_from_logs(item):
+def _recent_server_logs(item, limit=2000):
+    path = SERVER_LOG_DIR / (item["name"] + ".log")
     try:
-        logs = subprocess.run(
-            ["/usr/bin/journalctl", "--quiet", "-u", "mmanager-mc@" + item["name"] + ".service",
-             "--no-pager", "-o", "cat", "-n", "2000"],
-            capture_output=True, text=True, timeout=10, check=True).stdout
-    except Exception:
-        return []
+        from collections import deque
+        tail = deque(maxlen=limit)
+        with path.open("r", errors="replace") as stream:
+            tail.extend(stream)
+        return "".join(tail)
+    except OSError:
+        return ""
+
+
+def _java_online_from_logs(item):
+    logs = _recent_server_logs(item)
     states = {}
     for line in logs.splitlines():
         joined = re.search(r":\s*([A-Za-z0-9_]{1,16}) joined the game", line, re.I)
@@ -286,23 +292,17 @@ def _read_json(path, default):
 
 
 def _bedrock_online(item):
-    try:
-        logs = subprocess.run(
-            ["/usr/bin/journalctl", "--quiet", "-u", "mmanager-mc@" + item["name"] + ".service",
-             "--no-pager", "-o", "cat", "-n", "2000"],
-            capture_output=True, text=True, timeout=10, check=True).stdout
-    except Exception:
-        logs = ""
+    logs = _recent_server_logs(item)
     states = {}
+    pattern = re.compile(r"Player (connected|disconnected):\s*(.+?),\s*xuid:\s*([0-9]+)", re.I)
     for line in logs.splitlines():
-        connected = re.search(r"Player connected:\s*(.*?),\s*xuid:\s*([0-9]+)", line, re.I)
-        disconnected = re.search(r"Player disconnected:\s*(.*?),\s*xuid:\s*([0-9]+)", line, re.I)
-        match = connected or disconnected
-        if match:
-            name, xuid = match.group(1).strip(), match.group(2)
-            states[name.lower()] = {"name": name, "xuid": xuid, "online": bool(connected)}
-    return list(states.values())
-
+        match = pattern.search(line)
+        if not match:
+            continue
+        event, name, xuid = match.group(1).lower(), match.group(2).strip(), match.group(3)
+        if name:
+            states[name.lower()] = {"name": name, "xuid": xuid, "online": event == "connected"}
+    return [player for player in states.values() if player["online"]]
 def _proc_cpu_ticks(raw):
     """Read utime+stime from /proc/<pid>/stat without being confused by spaces in comm."""
     close = raw.rfind(")")
@@ -411,25 +411,6 @@ def _read_json(path, default):
         return default
 
 
-def _bedrock_online(item):
-    try:
-        logs = subprocess.run(
-            ["/usr/bin/journalctl", "--quiet", "-u", "mmanager-mc@" + item["name"] + ".service",
-             "--no-pager", "-o", "cat", "-n", "2000"],
-            capture_output=True, text=True, timeout=10, check=True).stdout
-    except Exception:
-        logs = ""
-    states = {}
-    for line in logs.splitlines():
-        connected = re.search(r"Player connected:\s*(.*?),\s*xuid:\s*([0-9]+)", line, re.I)
-        disconnected = re.search(r"Player disconnected:\s*(.*?),\s*xuid:\s*([0-9]+)", line, re.I)
-        match = connected or disconnected
-        if match:
-            name, xuid = match.group(1).strip(), match.group(2)
-            states[name.lower()] = {"name": name, "xuid": xuid, "online": bool(connected)}
-    return [x for x in states.values() if x["online"]]
-
-
 def plugin_search(query):
     query=str(query).strip()[:100]
     if not query: raise ManagerError("Enter a plugin name to search.")
@@ -509,3 +490,83 @@ def remove_plugin(sid, filename):
     if not target.is_file() or target.is_symlink(): raise ManagerError("Plugin file not found.")
     target.unlink()
     return {"removed":name}
+
+
+def geyser_settings(sid):
+    item = _server(sid)
+    if item["edition"] != "crossplay":
+        raise ManagerError("Geyser settings are available only for Cross-play servers.")
+    import yaml
+    path = Path(item["directory"]) / "plugins" / "Geyser-Spigot" / "config.yml"
+    if not path.is_file():
+        raise ManagerError("Geyser config.yml is missing. Reinstall or repair the Cross-play runtime.")
+    try:
+        config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        raise ManagerError("Cannot read Geyser configuration: " + str(exc)[:200])
+    bedrock = config.get("bedrock") if isinstance(config.get("bedrock"), dict) else {}
+    remote = config.get("remote") if isinstance(config.get("remote"), dict) else {}
+    return {
+        "bedrock_port": int(bedrock.get("port", 19132)),
+        "remote_address": str(remote.get("address", "auto")),
+        "remote_port": int(remote.get("port", item.get("java_port") or 25565)),
+        "auth_type": str(remote.get("auth-type", "online")),
+        "passthrough_motd": bool(config.get("passthrough-motd", True)),
+        "passthrough_player_counts": bool(config.get("passthrough-player-counts", True)),
+        "debug_mode": bool(config.get("debug-mode", False)),
+    }
+
+
+def update_geyser_settings(sid, changes):
+    item = _server(sid)
+    if item["edition"] != "crossplay":
+        raise ManagerError("Geyser settings are available only for Cross-play servers.")
+    allowed = {"bedrock_port", "remote_address", "remote_port", "auth_type",
+               "passthrough_motd", "passthrough_player_counts", "debug_mode"}
+    if not isinstance(changes, dict) or not changes or set(changes) - allowed:
+        raise ManagerError("Invalid Geyser settings payload.")
+    import yaml
+    path = Path(item["directory"]) / "plugins" / "Geyser-Spigot" / "config.yml"
+    if not path.is_file():
+        raise ManagerError("Geyser config.yml is missing. Reinstall or repair the Cross-play runtime.")
+    try:
+        config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        raise ManagerError("Cannot read Geyser configuration: " + str(exc)[:200])
+    if not isinstance(config, dict):
+        raise ManagerError("Geyser configuration root must be a YAML mapping.")
+    bedrock = config.setdefault("bedrock", {})
+    remote = config.setdefault("remote", {})
+    if not isinstance(bedrock, dict) or not isinstance(remote, dict):
+        raise ManagerError("Geyser bedrock/remote sections are invalid.")
+    if "bedrock_port" in changes:
+        port = int(changes["bedrock_port"])
+        if not 1 <= port <= 65535:
+            raise ManagerError("Bedrock UDP port must be between 1 and 65535.")
+        bedrock["port"] = port
+    if "remote_port" in changes:
+        port = int(changes["remote_port"])
+        if not 1 <= port <= 65535:
+            raise ManagerError("Java remote port must be between 1 and 65535.")
+        remote["port"] = port
+    if "remote_address" in changes:
+        address = str(changes["remote_address"]).strip()
+        if not address or len(address) > 253 or not re.fullmatch(r"[A-Za-z0-9._:-]+", address):
+            raise ManagerError("Invalid Geyser remote address.")
+        remote["address"] = address
+    if "auth_type" in changes:
+        auth_type = str(changes["auth_type"]).lower()
+        if auth_type not in {"online", "floodgate"}:
+            raise ManagerError("Geyser auth type must be online or floodgate.")
+        remote["auth-type"] = auth_type
+    for key, yaml_key in (("passthrough_motd", "passthrough-motd"),
+                          ("passthrough_player_counts", "passthrough-player-counts"),
+                          ("debug_mode", "debug-mode")):
+        if key in changes:
+            if not isinstance(changes[key], bool):
+                raise ManagerError(key + " must be a boolean.")
+            config[yaml_key] = changes[key]
+    temp = path.with_suffix(".yml.tmp")
+    temp.write_text(yaml.safe_dump(config, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    temp.replace(path)
+    return {"saved": True, "restart_required": True, **geyser_settings(sid)}

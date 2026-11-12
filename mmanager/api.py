@@ -7,7 +7,7 @@ import tarfile
 from .webconfig import load as load_web_config
 from pydantic import BaseModel,Field
 from . import store,core,auth,advanced,content
-app=FastAPI(title="MManager API",version="0.6.0")
+app=FastAPI(title="MManager API",version="0.7.0")
 app.add_middleware(CORSMiddleware,allow_origins=[],allow_credentials=False,allow_methods=["GET","POST","PUT","DELETE"],allow_headers=["Content-Type","Authorization"])
 class Login(BaseModel): password:str=Field(min_length=1,max_length=256)
 class SetupServer(BaseModel):
@@ -40,6 +40,14 @@ class ResourcePackConfig(BaseModel):
  url:str=""
  sha1:str=""
  required:bool=False
+class GeyserSettings(BaseModel):
+ bedrock_port:int=Field(ge=1,le=65535)
+ remote_address:str=Field(min_length=1,max_length=253)
+ remote_port:int=Field(ge=1,le=65535)
+ auth_type:str=Field(pattern="^(online|floodgate)$")
+ passthrough_motd:bool
+ passthrough_player_counts:bool
+ debug_mode:bool
 
 def secured(authorization:str|None=Header(default=None)):
  token=authorization[7:] if authorization and authorization.startswith("Bearer ") else ""
@@ -49,7 +57,7 @@ def current_server():
  rows=store.list_servers()
  return rows[0] if rows else None
 @app.get("/api/health")
-def health(): return {"status":"ok","version":"0.6.0"}
+def health(): return {"status":"ok","version":"0.7.0"}
 @app.post("/api/login")
 def login(p:Login,request:Request):
  token=auth.verify_login(p.password,request.client.host if request.client else "unknown")
@@ -193,6 +201,19 @@ def delete_resource_pack(pack_id:str,_:bool=Depends(secured)):
  item=current_server()
  if not item:raise HTTPException(404,detail="No server is configured")
  try:return content.remove_bedrock_resource_pack(item["id"],pack_id)
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+
+@app.get("/api/server/geyser")
+def get_geyser_settings(_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return advanced.geyser_settings(item["id"])
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+@app.put("/api/server/geyser")
+def put_geyser_settings(p:GeyserSettings,_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return advanced.update_geyser_settings(item["id"],p.model_dump())
  except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
 
 @app.get("/api/server/telemetry")

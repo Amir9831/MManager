@@ -59,18 +59,18 @@ def test_bedrock_install_uses_verified_zip(monkeypatch,tmp_path):
     assert "server-port=19132" in (root/"server.properties").read_text()
 
 
-def test_server_logs_do_not_invoke_sudo(monkeypatch, tmp_path):
+def test_server_logs_read_rotated_file_tail_without_subprocess(monkeypatch, tmp_path):
  setup(monkeypatch,tmp_path)
  item=core.create_server("logs","java","1.21.4","vanilla",True)
- from types import SimpleNamespace
- calls=[]
- def fake_run(cmd, **kwargs):
-  calls.append(cmd)
-  return SimpleNamespace(returncode=0,stdout="Minecraft started",stderr="")
- monkeypatch.setattr(core.subprocess,"run",fake_run)
- assert core.server_logs(item["id"],50)=="Minecraft started"
- assert calls[0][0]=="/usr/bin/journalctl"
- assert "sudo" not in calls[0]
+ log_dir=tmp_path/"logs"
+ log_dir.mkdir()
+ monkeypatch.setattr(core,"SERVER_LOG_DIR",log_dir)
+ (log_dir/"logs.log").write_text("line 1\nline 2\nline 3\n")
+ def forbidden(*args,**kwargs):
+  raise AssertionError("server_logs must read the service log file directly")
+ monkeypatch.setattr(core.subprocess,"run",forbidden)
+ assert core.server_logs(item["id"],2)=="line 2\nline 3\n"
+ assert core.server_logs(item["id"],1)=="line 3\n"
 
 
 def test_backup_download_and_delete_are_scoped_and_safe(monkeypatch,tmp_path):
@@ -115,7 +115,7 @@ def test_switch_java_to_crossplay_preserves_world_and_updates_registry(monkeypat
         if edition=="crossplay":
             plugin=stage/"plugins"/"Geyser-Spigot"
             plugin.mkdir(parents=True,exist_ok=True)
-            (plugin/"config.yml").write_text("bedrock:\\n  port: "+str(bedrock_port)+"\\nremote:\\n  port: "+str(java_port)+"\\n")
+            (plugin/"config.yml").write_text("bedrock:\n  port: "+str(bedrock_port)+"\nremote:\n  port: "+str(java_port)+"\n")
             (stage/"plugins"/"Geyser-Spigot.jar").write_bytes(b"geyser")
             (stage/"plugins"/"floodgate-spigot.jar").write_bytes(b"floodgate")
         (stage/"server.properties").write_text("server-port="+str(java_port)+"\n")
@@ -156,7 +156,7 @@ def test_switch_java_to_bedrock_archives_old_world_and_uses_new_runtime(monkeypa
 def test_active_treats_failed_known_unit_as_stopped(monkeypatch):
     class Result:
         returncode=3
-        stdout="failed\\n"
+        stdout="failed\n"
         stderr=""
     monkeypatch.setattr(core.subprocess,"run",lambda *args,**kwargs:Result())
     assert core._active({"name":"broken-server"}) is False
@@ -165,8 +165,37 @@ def test_active_treats_failed_known_unit_as_stopped(monkeypatch):
 def test_active_still_rejects_unknown_systemd_unit(monkeypatch):
     class Result:
         returncode=4
-        stdout="unknown\\n"
+        stdout="unknown\n"
         stderr=""
     monkeypatch.setattr(core.subprocess,"run",lambda *args,**kwargs:Result())
     with pytest.raises(core.ManagerError,match="GM-222"):
         core._active({"name":"missing-server"})
+
+
+def test_bedrock_cdn_download_uses_browser_user_agent(monkeypatch, tmp_path):
+    import io
+    seen = []
+    payload = b"x" * 2048
+
+    def fake_urlopen(request, timeout=60):
+        seen.append(request.get_header("User-agent"))
+        return io.BytesIO(payload)
+
+    monkeypatch.setattr(core.urllib.request, "urlopen", fake_urlopen)
+    target = tmp_path / "bedrock.zip"
+    core._download("https://www.minecraft.net/bedrockdedicatedserver/bin-linux/test.zip", target)
+    assert seen == ["Mozilla/5.0"]
+    assert target.read_bytes() == payload
+
+
+def test_other_downloads_keep_mmanager_user_agent(monkeypatch, tmp_path):
+    import io
+    seen = []
+
+    def fake_urlopen(request, timeout=60):
+        seen.append(request.get_header("User-agent"))
+        return io.BytesIO(b"x" * 2048)
+
+    monkeypatch.setattr(core.urllib.request, "urlopen", fake_urlopen)
+    core._download("https://example.com/server.jar", tmp_path / "server.jar")
+    assert seen == ["MManager/0.2 (https://github.com/Amir9831/MManager)"]

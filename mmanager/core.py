@@ -1,8 +1,10 @@
 import json,re,secrets,shutil,subprocess,tarfile,urllib.request,uuid,os,zipfile,stat
+from collections import deque
 from pathlib import Path
 from . import store,settings
 from .ports import choose_port
 NAME=re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{1,31}$")
+SERVER_LOG_DIR=Path(os.environ.get("MMANAGER_LOG_DIR","/var/log/mmanager/servers"))
 class ManagerError(Exception):pass
 def _json(url):
  req=urllib.request.Request(url,headers={"User-Agent":"MManager/0.2"})
@@ -10,7 +12,8 @@ def _json(url):
 def _download(url,dest,expected=None,algorithm="sha256"):
  tmp=Path(str(dest)+".part");total=0;digest=__import__("hashlib").new(algorithm)
  try:
-  req=urllib.request.Request(url,headers={"User-Agent":"MManager/0.2 (https://github.com/Amir9831/MManager)"})
+  ua="Mozilla/5.0" if "minecraft.net/" in url else "MManager/0.2 (https://github.com/Amir9831/MManager)"
+  req=urllib.request.Request(url,headers={"User-Agent":ua})
   with urllib.request.urlopen(req,timeout=60) as r,tmp.open("wb") as out:
    while True:
     chunk=r.read(1024*1024)
@@ -168,11 +171,16 @@ def server_logs(sid,lines=100):
  item=store.get_server(sid)
  if not item:raise ManagerError("GM-108: Server not found")
  if not 1<=lines<=500:raise ManagerError("GM-110: Invalid line count")
- cmd=["/usr/bin/journalctl","--quiet","-u",f"mmanager-mc@{item['name']}.service","--no-pager","-o","cat","-n",str(lines)]
- try:p=subprocess.run(cmd,capture_output=True,text=True,timeout=20)
- except (OSError,subprocess.TimeoutExpired) as exc:raise ManagerError("GM-221: Cannot read logs: "+str(exc))
- if p.returncode:raise ManagerError("GM-221: Cannot read logs: "+(p.stderr.strip() or p.stdout.strip())[:300])
- return p.stdout[-50000:]
+ log_path=SERVER_LOG_DIR/(item["name"]+".log")
+ tail=deque(maxlen=lines)
+ try:
+  with log_path.open("r",errors="replace") as stream:
+   for row in stream:tail.append(row)
+ except FileNotFoundError:
+  return ""
+ except OSError as exc:
+  raise ManagerError("GM-221: Cannot read logs: "+str(exc)[:250])
+ return "".join(tail)[-50000:]
 
 def create_backup(sid):
  item=store.get_server(sid)

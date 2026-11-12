@@ -164,3 +164,61 @@ def test_bedrock_console_fifo_wrapper(monkeypatch, tmp_path):
     assert ".mmanager-console.fifo" in script
     assert "exec 3<>" in script
     assert advanced.ensure_bedrock_console(item) is False
+
+
+def test_java_online_players_use_file_backed_service_logs(monkeypatch, tmp_path):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    monkeypatch.setattr(advanced, "SERVER_LOG_DIR", log_dir)
+    (log_dir / "java-test.log").write_text(
+        "[Server thread/INFO]: Alex joined the game\n"
+        "[Server thread/INFO]: Steve joined the game\n"
+        "[Server thread/INFO]: Alex left the game\n"
+    )
+    assert advanced._java_online_from_logs({"name": "java-test"}) == [
+        {"name": "Steve", "online": True}
+    ]
+
+
+def test_bedrock_online_players_use_file_backed_service_logs(monkeypatch, tmp_path):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    monkeypatch.setattr(advanced, "SERVER_LOG_DIR", log_dir)
+    (log_dir / "bedrock-test.log").write_text(
+        "Player connected: Alex, xuid: 12345\n"
+        "Player disconnected: Alex, xuid: 12345\n"
+        "Player connected: Steve, xuid: 67890\n"
+    )
+    raw = advanced._recent_server_logs({"name": "bedrock-test"})
+    assert raw == (
+        "Player connected: Alex, xuid: 12345\n"
+        "Player disconnected: Alex, xuid: 12345\n"
+        "Player connected: Steve, xuid: 67890\n"
+    )
+    assert advanced._bedrock_online({"name": "bedrock-test"}) == [
+        {"name": "Steve", "xuid": "67890", "online": True}
+    ]
+
+
+def test_geyser_settings_read_update_and_validate(monkeypatch, tmp_path):
+    _setup_player_tests(monkeypatch, tmp_path)
+    item = core.create_server("geysercfg", "crossplay", "1.21.4", "paper", True)
+    current = advanced.geyser_settings(item["id"])
+    assert current["bedrock_port"] == item["bedrock_port"]
+    assert current["auth_type"] == "floodgate"
+    result = advanced.update_geyser_settings(item["id"], {
+        "bedrock_port": 19133,
+        "remote_address": "127.0.0.1",
+        "remote_port": 25566,
+        "auth_type": "online",
+        "passthrough_motd": False,
+        "passthrough_player_counts": True,
+        "debug_mode": True,
+    })
+    assert result["saved"] is True
+    assert result["restart_required"] is True
+    assert result["bedrock_port"] == 19133
+    assert result["remote_address"] == "127.0.0.1"
+    assert result["auth_type"] == "online"
+    with pytest.raises(core.ManagerError, match="Bedrock UDP port"):
+        advanced.update_geyser_settings(item["id"], {"bedrock_port": 70000})
