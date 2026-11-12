@@ -411,25 +411,6 @@ def _read_json(path, default):
         return default
 
 
-def _bedrock_online(item):
-    try:
-        logs = subprocess.run(
-            ["/usr/bin/journalctl", "--quiet", "-u", "mmanager-mc@" + item["name"] + ".service",
-             "--no-pager", "-o", "cat", "-n", "2000"],
-            capture_output=True, text=True, timeout=10, check=True).stdout
-    except Exception:
-        logs = ""
-    states = {}
-    for line in logs.splitlines():
-        connected = re.search(r"Player connected:\s*(.*?),\s*xuid:\s*([0-9]+)", line, re.I)
-        disconnected = re.search(r"Player disconnected:\s*(.*?),\s*xuid:\s*([0-9]+)", line, re.I)
-        match = connected or disconnected
-        if match:
-            name, xuid = match.group(1).strip(), match.group(2)
-            states[name.lower()] = {"name": name, "xuid": xuid, "online": bool(connected)}
-    return [x for x in states.values() if x["online"]]
-
-
 def plugin_search(query):
     query=str(query).strip()[:100]
     if not query: raise ManagerError("Enter a plugin name to search.")
