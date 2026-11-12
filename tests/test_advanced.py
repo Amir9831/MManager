@@ -94,3 +94,9 @@ def test_rcon_reassembles_multiple_packets(monkeypatch,tmp_path):
     monkeypatch.setattr(advanced.socket,"create_connection",lambda *a,**k:FakeSocket())
     result=advanced._rcon({"edition":"java","directory":str(tmp_path)},"list")
     assert result=="first second"
+
+
+def test_proc_stat_parser_handles_spaces_in_process_name():
+    # Fields after the final ')' start at field 3; utime/stime are fields 14/15.
+    raw = "123 (java server worker) S " + " ".join(str(i) for i in range(1, 30))
+    assert advanced._proc_cpu_ticks(raw) == 12 + 13
