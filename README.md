@@ -47,4 +47,4 @@ Version 0.7.0 keeps the public panel on HTTP as requested; use a trusted HTTPS r
 
 ## Bedrock networking (BDS 1.26.60+)
 
-MManager configures Bedrock Dedicated Server 1.26.60 and newer to use NetherNet: `server-port` is the TCP signaling port, while gameplay uses UDP ports from `server-udp-ports` (`49152-49200`). Permit TCP on the configured server port and UDP on `49152-49200` in both the host firewall and provider firewall. The UDP 7551 socket is LAN discovery, not the gameplay listener. Older BDS releases continue to use the legacy RakNet UDP listener.
+MManager configures Bedrock Dedicated Server 1.26.60 and newer to use NetherNet: `server-port` is the TCP signaling port, while gameplay uses UDP ports from `server-udp-ports` (`49152-49200`). Permit **both TCP on the configured `server-port` and UDP on `49152-49200`** in UFW and the provider firewall. The panel displays both transports for modern Bedrock servers. The UDP 7551 socket is LAN discovery, not the gameplay listener. Older BDS releases continue to use the legacy RakNet UDP listener and need only the configured UDP game port.
