@@ -78,7 +78,7 @@ def test_bedrock_install_uses_verified_zip(monkeypatch,tmp_path):
     properties=(root/"server.properties").read_text()
     assert "server-port=19132" in properties
     assert "server-portv6="+str(item["ipv6_port"]) in properties
-    assert "enable-lan-visibility=false" in properties
+    assert "enable-lan-visibility=true" in properties
     assert "enable-lan-broadcast=false" in properties
     assert "transport=nethernet" in properties
     assert "server-udp-ports=49152-49200" in properties
@@ -270,7 +270,7 @@ def test_bedrock_update_reapplies_allocated_udp_ports(monkeypatch, tmp_path):
     props = core.server_settings(item["id"])["settings"]
     assert props["server-port"] == str(item["java_port"])
     assert props["server-portv6"] == str(item["ipv6_port"])
-    assert props["enable-lan-visibility"] == "false"
+    assert props["enable-lan-visibility"] == "true"
     assert props["enable-lan-broadcast"] == "false"
     assert props["transport"] == "nethernet"
     assert props["server-udp-ports"] == "49152-49200"
@@ -380,6 +380,8 @@ def test_start_repairs_existing_bedrock_nethernet_properties(monkeypatch, tmp_pa
     assert props["transport"] == "nethernet"
     assert props["server-udp-ports"] == "49152-49200"
     assert props["server-port"] == "19132"
+    assert props["enable-lan-visibility"] == "true"
+    assert props["enable-lan-broadcast"] == "false"
 
 
 def test_bedrock_raknet_uses_distinct_v6_port_and_defaults_ipv6_off(monkeypatch, tmp_path):
