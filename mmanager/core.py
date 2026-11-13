@@ -732,7 +732,7 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
             archived.rename(root)
             shutil.rmtree(failed, ignore_errors=True)
         with store.connect() as db:
-            db.execute("UPDATE servers SET edition=?,software=?,version=?,java_port=?,bedrock_port=? WHERE id=?",
+            db.execute("UPDATE servers SET edition=?,software=?,version=?,java_port=?,bedrock_port=?,ipv6_port=? WHERE id=?",
                        (item["edition"], item["software"], item["version"], item["java_port"], item["bedrock_port"], item.get("ipv6_port"), sid))
         if was_active and root.exists():
             try:
