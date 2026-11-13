@@ -20,5 +20,5 @@ def test_runtime_prepare_uses_readonly_config_not_database(monkeypatch, tmp_path
     monkeypatch.setattr(networking, "apply", lambda item, write_runtime=True: applied.append((item, write_runtime)))
     monkeypatch.setattr(core, "_configure_java_bind_address", lambda path, ipv4, ipv6: bound.append((path, ipv4, ipv6)))
     runtime_prepare.prepare("minecraft")
-    assert applied and applied[0][1] is False
+    assert applied == []
     assert bound == [(server_dir / "server.properties", True, False)]
