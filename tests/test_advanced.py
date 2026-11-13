@@ -39,7 +39,8 @@ def test_update_and_rollback_preserve_previous_binary(monkeypatch,tmp_path):
     assert store.get_server(item["id"])["version"]=="1.21.5"
     assert jar.read_bytes()!=before
     actions=[]
-    monkeypatch.setattr(core,"_active",lambda server:True)
+    active_states=iter([True,True,False])
+    monkeypatch.setattr(core,"_active",lambda server:next(active_states))
     monkeypatch.setattr(core,"_systemctl",lambda action,server:actions.append((action,server["version"])))
     rolled=core.rollback_server(item["id"])
     assert actions==[("stop","1.21.5"),("start","1.21.4")]
