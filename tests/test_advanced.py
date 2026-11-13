@@ -73,7 +73,7 @@ def test_bedrock_update_preserves_world_and_settings(monkeypatch,tmp_path):
     properties=(root/"server.properties").read_text()
     assert "server-name=My Server\n" in properties
     assert "server-port=19132\n" in properties
-    assert "server-portv6=19132\n" in properties
+    assert "server-portv6="+str(item["ipv6_port"])+"\n" in properties
     assert "enable-lan-visibility=false\n" in properties
     core.rollback_server(item["id"])
     assert (root/"bedrock_server").read_bytes()==before
