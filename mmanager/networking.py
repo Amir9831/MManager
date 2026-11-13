@@ -2,6 +2,8 @@
 import json
 import os
 import subprocess
+import tempfile
+from pathlib import Path
 
 from . import store
 
@@ -23,10 +25,16 @@ def _write_runtime_config(item, name, ipv4, ipv6):
         "ipv6_enabled": ipv6,
     }
     path = directory / (name + ".json")
-    temporary = path.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(data, separators=(",", ":")) + "\n")
-    os.chmod(temporary, 0o640)
-    os.replace(temporary, path)
+    fd, temporary_name = tempfile.mkstemp(prefix="." + name + ".", suffix=".tmp", dir=directory)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(json.dumps(data, separators=(",", ":")) + "\n")
+        os.chmod(temporary, 0o640)
+        os.replace(temporary, path)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def apply(item, write_runtime=True):
