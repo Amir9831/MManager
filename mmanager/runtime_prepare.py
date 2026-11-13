@@ -19,11 +19,10 @@ def prepare(name):
             ipv4, ipv6, item.get("ipv6_port"),
         )
     else:
-        core._configure_java_properties(root / "server.properties", item["java_port"], ipv4, ipv6)
+        core._configure_java_bind_address(root / "server.properties", ipv4, ipv6)
         if item["edition"] == "crossplay":
-            core._configure_geyser(
-                root / "plugins" / "Geyser-Spigot" / "config.yml",
-                item["bedrock_port"], item["java_port"], ipv4, ipv6,
+            core._configure_geyser_bind_address(
+                root / "plugins" / "Geyser-Spigot" / "config.yml", ipv4, ipv6,
             )
 
 
