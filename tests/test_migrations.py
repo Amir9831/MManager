@@ -10,3 +10,5 @@ def test_old_registry_migrates_additively(monkeypatch,tmp_path):
  row=store.get_server("id1")
  assert row["software"]=="vanilla" and row["directory"]=="/old/world"
  assert "bedrock_port" in row and row["eula_accepted"]==0
+ assert row["ipv4_enabled"]==1 and row["ipv6_enabled"]==0
+ assert row["ipv6_port"] is None
