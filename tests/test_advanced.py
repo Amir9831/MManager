@@ -30,6 +30,7 @@ def test_update_and_rollback_preserve_previous_binary(monkeypatch,tmp_path):
     monkeypatch.setattr(core,"_download",download)
     monkeypatch.setattr(core,"_active",lambda item:False)
     monkeypatch.setattr(core,"_systemctl",lambda action,item:None)
+    monkeypatch.setattr(core.networking,"apply",lambda item,write_runtime=True:None)
     item=core.create_server("survival","java","1.21.4","vanilla",True)
     jar=Path(item["directory"])/"server.jar"
     before=jar.read_bytes()
@@ -60,6 +61,7 @@ def test_bedrock_update_preserves_world_and_settings(monkeypatch,tmp_path):
     monkeypatch.setattr(core,"_download",download)
     monkeypatch.setattr(core,"_active",lambda item:False)
     monkeypatch.setattr(core,"_systemctl",lambda action,item:None)
+    monkeypatch.setattr(core.networking,"apply",lambda item,write_runtime=True:None)
     item=core.create_server("bedrock","bedrock","1.26.63","bedrock",True)
     root=Path(item["directory"])
     (root/"worlds").mkdir()
