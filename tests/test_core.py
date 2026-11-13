@@ -321,9 +321,10 @@ def test_tcp_and_udp_can_share_same_numeric_port(monkeypatch, tmp_path):
 
     monkeypatch.setattr(core, "_download", fake_download)
     java = core.create_server("java19132", "java", "1.21.4", "vanilla", True)
-    bedrock = core.create_server("bedrock19132", "bedrock", "1.26.50", "bedrock", True)
+    bedrock = core.create_server("bedrock19132", "bedrock", "1.26.33", "bedrock", True)
     assert java["java_port"] == bedrock["java_port"] == 19132
-    assert core._bedrock_port_protocol("1.26.50") == "udp"
+    assert core._bedrock_port_protocol("1.26.33") == "udp"
+    assert core._bedrock_port_protocol("1.26.50") == "tcp"
     assert store.get_server(java["id"])["edition"] == "java"
     assert store.get_server(bedrock["id"])["edition"] == "bedrock"
 
