@@ -77,7 +77,7 @@ def status(_:bool=Depends(secured)):
 @app.get("/api/versions")
 def versions(edition:str="java",_:bool=Depends(secured)):
  try:return core.available_versions(edition)
- except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+ except (core.ManagerError,OSError,ValueError,RuntimeError) as e:raise HTTPException(400,detail=str(e))
 @app.post("/api/server/setup")
 def setup(p:SetupServer,_:bool=Depends(secured)):
  if current_server():raise HTTPException(409,detail="A server is already configured. MManager manages one server.")
