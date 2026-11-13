@@ -24,7 +24,7 @@ def _write_runtime_config(item, name, ipv4, ipv6):
     }
     path = directory / (name + ".json")
     temporary = path.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(data, separators=(",", ":")) + "\\n")
+    temporary.write_text(json.dumps(data, separators=(",", ":")) + "\n")
     os.chmod(temporary, 0o640)
     os.replace(temporary, path)
 
