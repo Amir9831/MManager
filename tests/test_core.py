@@ -11,6 +11,7 @@ def setup(monkeypatch,tmp_path):
  monkeypatch.setattr(core,"_paper",lambda v:{"url":"https://invalid.test/paper.jar","checksum":None,"algorithm":"sha256"})
  monkeypatch.setattr(core,"_download",lambda u,d,*a:Path(d).write_bytes(b"x"*2048))
  monkeypatch.setattr(core,"choose_port",lambda p,proto,reserved:p if p not in reserved else p+1)
+ monkeypatch.setattr(core.networking,"apply",lambda item,write_runtime=True:None)
 def test_create_and_eula(monkeypatch,tmp_path):
  setup(monkeypatch,tmp_path);x=core.create_server("survival","java","1.21.4","vanilla",True)
  assert store.get_server(x["id"])["java_port"]==25565
