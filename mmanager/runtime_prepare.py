@@ -1,4 +1,5 @@
 """Repair MManager-managed listener properties immediately before every game-server start."""
+import json
 import sys
 from pathlib import Path
 
@@ -6,13 +7,17 @@ from . import core, networking, store
 
 
 def prepare(name):
-    item = next((row for row in store.list_servers() if row.get("name") == name), None)
-    if item is None:
-        raise RuntimeError("No MManager server record matches this service instance")
+    config_path = store.DATA / "network" / (name + ".json")
+    try:
+        item = json.loads(config_path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Cannot read MManager network runtime config: " + str(exc))
+    if item.get("name") != name:
+        raise RuntimeError("MManager network runtime config does not match this service instance")
     root = Path(item["directory"])
     ipv4 = bool(item.get("ipv4_enabled", 1))
     ipv6 = bool(item.get("ipv6_enabled", 0))
-    networking.apply(item)
+    networking.apply(item, write_runtime=False)
     if item["edition"] == "bedrock":
         core._configure_bedrock_properties(
             root / "server.properties", item["java_port"], item["version"],
