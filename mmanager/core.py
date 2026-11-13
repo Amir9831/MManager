@@ -171,6 +171,7 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
    used_tcp=set()
    used_udp={r[0] for r in db.execute("SELECT bedrock_port FROM servers WHERE bedrock_port IS NOT NULL")}
    used_udp.update(r[0] for r in db.execute("SELECT ipv6_port FROM servers WHERE ipv6_port IS NOT NULL"))
+   used_udp.update(range(49152,49201))
    for row in db.execute("SELECT edition,version,java_port FROM servers WHERE java_port IS NOT NULL"):
     if row["edition"]=="bedrock" and _bedrock_port_protocol(row["version"])=="udp":
      used_udp.add(row["java_port"])
@@ -399,8 +400,10 @@ def update_server(sid, version):
                     used_udp.add(other["bedrock_port"])
                 if other.get("ipv6_port") is not None:
                     used_udp.add(other["ipv6_port"])
-            if new_protocol == "udp" and item.get("ipv6_port") is not None:
-                used_udp.add(item["ipv6_port"])
+            if new_protocol == "udp":
+                used_udp.update(range(49152, 49201))
+                if item.get("ipv6_port") is not None:
+                    used_udp.add(item["ipv6_port"])
             target_port = choose_port(
                 item["java_port"], new_protocol,
                 used_tcp if new_protocol == "tcp" else used_udp,
@@ -739,6 +742,7 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
                 "SELECT bedrock_port FROM servers WHERE id<>? AND bedrock_port IS NOT NULL", (sid,))}
             used_udp.update(r[0] for r in db.execute(
                 "SELECT ipv6_port FROM servers WHERE id<>? AND ipv6_port IS NOT NULL", (sid,)))
+            used_udp.update(range(49152, 49201))
             for row in db.execute(
                 "SELECT edition,version,java_port FROM servers WHERE id<>? AND java_port IS NOT NULL", (sid,)):
                 if row["edition"] == "bedrock" and _bedrock_port_protocol(row["version"]) == "udp":
