@@ -43,3 +43,25 @@ def test_invalid_unit_name_and_both_families_disabled_are_rejected(monkeypatch):
         networking.apply({"name": "../bad", "ipv4_enabled": 1, "ipv6_enabled": 0})
     with pytest.raises(RuntimeError, match="At least one IP family"):
         networking.apply({"name": "minecraft", "ipv4_enabled": 0, "ipv6_enabled": 0})
+
+
+def test_apply_writes_read_only_runtime_config(monkeypatch, tmp_path):
+    import json
+    data_root = tmp_path / "data"
+    server_dir = tmp_path / "servers" / "minecraft"
+    server_dir.mkdir(parents=True)
+    monkeypatch.setattr(networking.store, "DATA", data_root)
+    monkeypatch.setattr(
+        networking.subprocess, "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "", ""),
+    )
+    item = {
+        "name": "minecraft", "directory": str(server_dir), "edition": "bedrock",
+        "version": "1.26.33", "java_port": 19132, "ipv6_port": 19133,
+        "ipv4_enabled": 1, "ipv6_enabled": 0,
+    }
+    networking.apply(item)
+    config = json.loads((data_root / "network" / "minecraft.json").read_text())
+    assert config["ipv4_enabled"] is True
+    assert config["ipv6_enabled"] is False
+    assert config["ipv6_port"] == 19133
