@@ -629,7 +629,8 @@ def _configure_bedrock_properties(path, port, version, ipv4_enabled=True, ipv6_e
     for key, value in (
         ("server-port", port),
         ("server-portv6", ipv6_port or 19133),
-        ("enable-lan-visibility", "false"),
+        # Bedrock must include the server advertisement in RakNet UnconnectedPong.
+        ("enable-lan-visibility", "true"),
         ("enable-lan-broadcast", "false"),
     ):
         _set_property_file(path, key, str(value))
