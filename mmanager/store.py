@@ -45,9 +45,12 @@ def delete_backup(sid,bid):
   cur=db.execute("DELETE FROM backups WHERE server_id=? AND id=?",(sid,bid))
   return cur.rowcount==1
 
-def update_server_version(sid,version):
+def update_server_version(sid,version,java_port=None):
  with connect() as db:
-  cur=db.execute("UPDATE servers SET version=? WHERE id=?",(version,sid))
+  if java_port is None:
+   cur=db.execute("UPDATE servers SET version=? WHERE id=?",(version,sid))
+  else:
+   cur=db.execute("UPDATE servers SET version=?,java_port=? WHERE id=?",(version,int(java_port),sid))
   if cur.rowcount!=1: raise ValueError("Server not found")
 
  
