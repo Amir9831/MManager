@@ -233,3 +233,34 @@ def test_geyser_settings_read_update_and_validate(monkeypatch, tmp_path):
     assert result["auth_type"] == "online"
     with pytest.raises(core.ManagerError, match="Bedrock UDP port"):
         advanced.update_geyser_settings(item["id"], {"bedrock_port": 70000})
+
+
+def test_bedrock_update_reallocates_port_when_switching_raknet_to_nethernet(monkeypatch, tmp_path):
+    import zipfile
+    monkeypatch.setattr(store, "DATA", tmp_path / "data")
+    monkeypatch.setattr(store, "DB", tmp_path / "data" / "test.sqlite3")
+    monkeypatch.setattr(settings, "SERVERS", tmp_path / "servers")
+    monkeypatch.setattr(settings, "BACKUPS", tmp_path / "backups")
+    monkeypatch.setattr(settings, "ROOT", tmp_path / "root")
+    monkeypatch.setattr(core, "choose_port", lambda preferred, protocol, reserved: preferred if preferred not in reserved else preferred + 1)
+    monkeypatch.setattr(core, "_bedrock", lambda v: {"url": "https://invalid.test/" + v + ".zip", "checksum": None, "algorithm": "sha256"})
+    def download(url, dest, *args):
+        with zipfile.ZipFile(dest, "w") as archive:
+            archive.writestr("bedrock_server", b"fake BDS " + url.encode())
+    monkeypatch.setattr(core, "_download", download)
+    monkeypatch.setattr(core, "_active", lambda item: False)
+    monkeypatch.setattr(core, "_systemctl", lambda action, item: None)
+    monkeypatch.setattr(core.networking, "apply", lambda item, write_runtime=True: None)
+    item = core.create_server("raknet-upgrade", "bedrock", "1.26.33", "bedrock", True)
+    old_port = item["java_port"]
+    monkeypatch.setattr(core, "choose_port", lambda preferred, protocol, reserved: 25565 if protocol == "tcp" else preferred)
+    result = core.update_server(item["id"], "1.26.63")
+    updated = store.get_server(item["id"])
+    assert result["port"] == 25565
+    assert updated["java_port"] == 25565
+    assert updated["version"] == "1.26.63"
+    rolled = core.rollback_server(item["id"])
+    restored = store.get_server(item["id"])
+    assert rolled["rolled_back"] is True
+    assert restored["java_port"] == old_port
+    assert restored["version"] == "1.26.33"
