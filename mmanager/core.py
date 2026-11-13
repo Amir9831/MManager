@@ -17,6 +17,15 @@ def _bedrock_uses_nethernet(version):
 
 def _bedrock_port_protocol(version):
  return "tcp" if _bedrock_uses_nethernet(version) else "udp"
+
+def _allocate_bedrock_ipv6_port(game_port, reserved):
+ reserved=set(reserved or ()) | {int(game_port)}
+ candidate=choose_port(19133,"udp",reserved)
+ if candidate in reserved:
+  candidate=int(game_port)+1 if int(game_port)<65535 else int(game_port)-1
+ if not 1024<=int(candidate)<=65535 or int(candidate) in reserved:
+  raise ManagerError("GM-261: Cannot allocate a distinct IPv6 Bedrock UDP port")
+ return int(candidate)
 def _json(url):
  req=urllib.request.Request(url,headers={"User-Agent":"MManager/0.2"})
  with urllib.request.urlopen(req,timeout=25) as r:return json.load(r)
@@ -170,7 +179,7 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
    if edition=="bedrock":
     protocol=_bedrock_port_protocol(version)
     item["java_port"]=choose_port(19132,protocol,used_tcp if protocol=="tcp" else used_udp)
-    item["ipv6_port"]=choose_port(19133,"udp",used_udp | {item["java_port"]})
+    item["ipv6_port"]=_allocate_bedrock_ipv6_port(item["java_port"],used_udp)
    else:
     item["java_port"]=choose_port(25565,"tcp",used_tcp)
    if edition=="crossplay":
@@ -681,7 +690,7 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
         if edition == "bedrock":
             protocol = _bedrock_port_protocol(version)
             java_port = choose_port(19132, protocol, used_tcp if protocol == "tcp" else used_udp)
-            ipv6_port = choose_port(19133, "udp", used_udp | {java_port})
+            ipv6_port = _allocate_bedrock_ipv6_port(java_port, used_udp)
             bedrock_port = None
         else:
             java_port = choose_port(25565, "tcp", used_tcp)
