@@ -339,7 +339,7 @@ def delete_backup(sid,bid):
  if not store.delete_backup(sid,bid):
   raise ManagerError("GM-231: Backup record disappeared during deletion")
  return {"deleted":True,"id":bid}
-def restore_backup(sid,bid,confirm=False):
+def restore_backup(sid,bid,confirm=False,restart=True):
  if not confirm:raise ManagerError("GM-230: Explicit confirmation required")
  item=store.get_server(sid)
  if not item:raise ManagerError("GM-108: Server not found")
@@ -365,13 +365,13 @@ def restore_backup(sid,bid,confirm=False):
   except Exception:
    old.rename(root);raise
   shutil.rmtree(old,ignore_errors=True)
-  return {"restored":True,"restarted":was_active}
+  return {"restored":True,"restarted":bool(was_active and restart)}
  except Exception:
   shutil.rmtree(stage,ignore_errors=True)
   if old.exists() and not root.exists():old.rename(root)
   raise
  finally:
-  if was_active and root.exists():_systemctl("start",item)
+  if was_active and root.exists() and restart:_systemctl("start",item)
 
 def update_server(sid, version):
     """Install a verified game-server release with a full pre-update backup."""
@@ -467,9 +467,20 @@ def rollback_server(sid):
     except (OSError,ValueError): raise ManagerError("Update rollback metadata is invalid.")
     backup_id=state.get("backup_id"); previous=state.get("previous_version")
     if not backup_id or not previous: raise ManagerError("Update rollback metadata is incomplete.")
-    restore_backup(sid,backup_id,True)
-    store.update_server_version(sid,previous)
-    networking.apply(store.get_server(sid))
+    was_active = _active(item)
+    try:
+        restore_backup(sid,backup_id,True,restart=False)
+        store.update_server_version(sid,previous)
+        updated = store.get_server(sid)
+        if was_active:
+            _systemctl("start",updated)
+        else:
+            networking.apply(updated)
+    except Exception:
+        if was_active:
+            try: _systemctl("start",item)
+            except Exception: pass
+        raise
     return {"rolled_back":True,"version":previous,"restored_backup":backup_id}
 
 def _safe_extract_bedrock(archive, destination):
