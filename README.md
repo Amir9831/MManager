@@ -47,7 +47,7 @@ Version 0.7.0 keeps the public panel on HTTP as requested; use a trusted HTTPS r
 
 ## Per-server IPv4 / IPv6 controls
 
-The panel exposes independent IPv4 and IPv6 switches for each server. IPv4 defaults to enabled and IPv6 defaults to disabled, including existing installations after the additive database migration. At least one family must remain enabled. MManager applies the selected policy to the server's systemd cgroup with `IPAddressDeny=`, so the policy filters both inbound and outbound traffic for that server only; it does not change host-wide IPv6 settings, UFW, or the provider firewall. Enabling IPv6 removes the per-service IPv6 deny policy.
+The panel exposes independent IPv4 and IPv6 switches for each server. IPv4 defaults to enabled and IPv6 defaults to disabled, including existing installations after the additive database migration. At least one family must remain enabled. This requires systemd 235 or newer with cgroup-BPF support. MManager applies the selected policy to the server's systemd cgroup with `IPAddressDeny=`, so the policy filters both inbound and outbound traffic for that server only; it does not change host-wide IPv6 settings, UFW, or the provider firewall. Enabling IPv6 removes the per-service IPv6 deny policy.
 
 For legacy Bedrock/RakNet, BDS has separate IPv4 and IPv6 UDP listeners. MManager assigns different port numbers to avoid the dual-stack bind collision; when IPv6 is disabled, the IPv6 listener may still appear in `ss`, but systemd blocks IPv6 packets for that service. When enabled, open the displayed IPv6 UDP port in the host and provider firewalls.
 
