@@ -1,6 +1,6 @@
 [Unit]
 Description=MManager Minecraft server %i
-Requires=mmanager-core.service
+Wants=mmanager-core.service
 After=mmanager-core.service network-online.target
 Wants=network-online.target
 [Service]
