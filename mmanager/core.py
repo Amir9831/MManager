@@ -441,13 +441,16 @@ def update_server(sid, version):
                 old.rename(root); raise
             shutil.rmtree(old,ignore_errors=True)
         store.update_server_version(sid,version)
-        if was_active: _systemctl("start",item)
+        updated_item=dict(item,version=version)
+        networking.apply(updated_item)
+        if was_active: _systemctl("start",updated_item)
         return {"updated":True,"from":item["version"],"to":version,"backup_id":backup["id"],"restart_required":False}
     except Exception:
         if backup:
             try:
                 restore_backup(sid,backup["id"],True)
                 store.update_server_version(sid,item["version"])
+                networking.apply(item)
             except Exception as rollback_error:
                 raise ManagerError("Update failed and automatic rollback also failed: "+str(rollback_error))
         if was_active:
@@ -466,6 +469,7 @@ def rollback_server(sid):
     if not backup_id or not previous: raise ManagerError("Update rollback metadata is incomplete.")
     restore_backup(sid,backup_id,True)
     store.update_server_version(sid,previous)
+    networking.apply(store.get_server(sid))
     return {"rolled_back":True,"version":previous,"restored_backup":backup_id}
 
 def _safe_extract_bedrock(archive, destination):
@@ -744,8 +748,10 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
         with store.connect() as db:
             db.execute("UPDATE servers SET edition=?,software=?,version=?,java_port=?,bedrock_port=?,ipv6_port=? WHERE id=?",
                        (edition, software, version, java_port, bedrock_port, ipv6_port, sid))
+        updated_item = store.get_server(sid)
+        networking.apply(updated_item)
         if was_active:
-            _systemctl("start", store.get_server(sid))
+            _systemctl("start", updated_item)
         if not cross_edition:
             shutil.rmtree(archived, ignore_errors=True)
         return {"switched": True, "from": {"edition": item["edition"], "software": item["software"], "version": item["version"]},
@@ -762,6 +768,9 @@ def switch_server(sid, edition, software, version, confirm_world_reset=False):
         with store.connect() as db:
             db.execute("UPDATE servers SET edition=?,software=?,version=?,java_port=?,bedrock_port=?,ipv6_port=? WHERE id=?",
                        (item["edition"], item["software"], item["version"], item["java_port"], item["bedrock_port"], item.get("ipv6_port"), sid))
+        if root.exists():
+            try: networking.apply(item)
+            except Exception: pass
         if was_active and root.exists():
             try:
                 _systemctl("start", item)
