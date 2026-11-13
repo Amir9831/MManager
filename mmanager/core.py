@@ -382,6 +382,29 @@ def update_server(sid, version):
     if item["edition"]=="bedrock": artifact=_bedrock(version)
     elif item["software"]=="vanilla": artifact=_vanilla(version)
     else: artifact=_paper(version)
+    target_port = item["java_port"]
+    if item["edition"] == "bedrock":
+        old_protocol = _bedrock_port_protocol(item["version"])
+        new_protocol = _bedrock_port_protocol(version)
+        if old_protocol != new_protocol:
+            used_tcp, used_udp = set(), set()
+            for other in store.list_servers():
+                if other["id"] == sid:
+                    continue
+                if other.get("java_port") is not None:
+                    other_protocol = (_bedrock_port_protocol(other["version"])
+                                      if other["edition"] == "bedrock" else "tcp")
+                    (used_tcp if other_protocol == "tcp" else used_udp).add(other["java_port"])
+                if other.get("bedrock_port") is not None:
+                    used_udp.add(other["bedrock_port"])
+                if other.get("ipv6_port") is not None:
+                    used_udp.add(other["ipv6_port"])
+            if new_protocol == "udp" and item.get("ipv6_port") is not None:
+                used_udp.add(item["ipv6_port"])
+            target_port = choose_port(
+                item["java_port"], new_protocol,
+                used_tcp if new_protocol == "tcp" else used_udp,
+            )
     was_active=_active(item)
     if was_active: _systemctl("stop",item)
     backup=None
@@ -424,7 +447,7 @@ def update_server(sid, version):
             # Reapply MManager-owned listener settings after replacing the runtime.
             # This repairs stale/default ports while preserving unrelated user settings.
             if item["edition"] == "bedrock":
-                _configure_bedrock_properties(stage / "server.properties", item["java_port"], version,item.get("ipv4_enabled",1),item.get("ipv6_enabled",0),item.get("ipv6_port"))
+                _configure_bedrock_properties(stage / "server.properties", target_port, version,item.get("ipv4_enabled",1),item.get("ipv6_enabled",0),item.get("ipv6_port"))
             else:
                 _configure_java_properties(stage / "server.properties", item["java_port"],item.get("ipv4_enabled",1),item.get("ipv6_enabled",0))
             if item["edition"] == "crossplay":
@@ -432,7 +455,7 @@ def update_server(sid, version):
                 if not geyser_config.is_file():
                     raise ManagerError("GM-237: Cross-play update is missing the Geyser config.yml")
                 _configure_geyser(geyser_config, item["bedrock_port"], item["java_port"],item.get("ipv4_enabled",1),item.get("ipv6_enabled",0))
-            state={"backup_id":backup["id"],"previous_version":item["version"],"updated_version":version}
+            state={"backup_id":backup["id"],"previous_version":item["version"],"previous_java_port":item["java_port"],"updated_version":version}
             (stage/"mmanager-update-state.json").write_text(json.dumps(state))
             old=root.parent/(root.name+".update-old-"+secrets.token_hex(4))
             root.rename(old)
@@ -440,16 +463,16 @@ def update_server(sid, version):
             except Exception:
                 old.rename(root); raise
             shutil.rmtree(old,ignore_errors=True)
-        store.update_server_version(sid,version)
-        updated_item=dict(item,version=version)
+        store.update_server_version(sid,version,target_port)
+        updated_item=dict(item,version=version,java_port=target_port)
         networking.apply(updated_item)
         if was_active: _systemctl("start",updated_item)
-        return {"updated":True,"from":item["version"],"to":version,"backup_id":backup["id"],"restart_required":False}
+        return {"updated":True,"from":item["version"],"to":version,"port":target_port,"backup_id":backup["id"],"restart_required":False}
     except Exception:
         if backup:
             try:
-                restore_backup(sid,backup["id"],True)
-                store.update_server_version(sid,item["version"])
+                restore_backup(sid,backup["id"],True,restart=False)
+                store.update_server_version(sid,item["version"],item["java_port"])
                 networking.apply(item)
             except Exception as rollback_error:
                 raise ManagerError("Update failed and automatic rollback also failed: "+str(rollback_error))
@@ -466,11 +489,12 @@ def rollback_server(sid):
     try: state=json.loads(state_path.read_text())
     except (OSError,ValueError): raise ManagerError("Update rollback metadata is invalid.")
     backup_id=state.get("backup_id"); previous=state.get("previous_version")
+    previous_port=state.get("previous_java_port",item["java_port"])
     if not backup_id or not previous: raise ManagerError("Update rollback metadata is incomplete.")
     was_active = _active(item)
     try:
         restore_backup(sid,backup_id,True,restart=False)
-        store.update_server_version(sid,previous)
+        store.update_server_version(sid,previous,previous_port)
         updated = store.get_server(sid)
         if was_active:
             _systemctl("start",updated)
