@@ -423,10 +423,10 @@ def test_network_settings_are_persisted_and_restart_active_server(monkeypatch, t
 def test_modern_bedrock_binds_ipv4_only_when_ipv6_disabled(tmp_path):
     path = tmp_path / "server.properties"
     path.write_text("server-port=19132\nserver-portv6=19132\n")
-    core._configure_bedrock_properties(path, 19132, "1.26.63", True, False, 19133)
+    core._configure_bedrock_properties(path, 19132, "1.26.50", True, False, 19133)
     props = dict(line.split("=", 1) for line in path.read_text().splitlines() if "=" in line)
     assert props["server-ip"] == "0.0.0.0"
     assert props["server-portv6"] == "19133"
-    core._configure_bedrock_properties(path, 19132, "1.26.63", True, True, 19133)
+    core._configure_bedrock_properties(path, 19132, "1.26.50", True, True, 19133)
     props = dict(line.split("=", 1) for line in path.read_text().splitlines() if "=" in line)
     assert props["server-ip"] == ""
