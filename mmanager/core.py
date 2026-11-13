@@ -7,7 +7,7 @@ from .ports import choose_port
 from . import networking
 NAME=re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{1,31}$")
 SERVER_LOG_DIR=Path(os.environ.get("MMANAGER_LOG_DIR","/var/log/mmanager/servers"))
-BEDROCK_NETHERNET_MIN_VERSION=(1,26,60)
+BEDROCK_NETHERNET_MIN_VERSION=(1,26,50)
 BEDROCK_UDP_PORT_RANGE="49152-49200"
 class ManagerError(Exception):pass
 
