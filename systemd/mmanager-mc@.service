@@ -1,12 +1,17 @@
 [Unit]
 Description=MManager Minecraft server %i
-After=network-online.target
+Wants=mmanager-core.service
+Requisite=mmanager-core.service
+After=mmanager-core.service network-online.target
 Wants=network-online.target
 [Service]
 Type=simple
 User=mmanager
 Group=mmanager
+Environment=MMANAGER_DATA=/var/lib/mmanager
+Environment=PYTHONPATH=/opt/mmanager/current
 WorkingDirectory=/var/lib/mmanager/servers/%i
+ExecStartPre=/opt/mmanager/current/venv/bin/python -m mmanager.runtime_prepare %i
 ExecStart=/bin/bash -c 'if [ -x /var/lib/mmanager/servers/%i/run.sh ]; then exec /var/lib/mmanager/servers/%i/run.sh; else exec /usr/bin/java -Xms256M -Xmx1G -jar /var/lib/mmanager/servers/%i/server.jar nogui; fi'
 Restart=on-failure
 RestartSec=10

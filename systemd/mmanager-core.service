@@ -9,6 +9,7 @@ WorkingDirectory=/opt/mmanager/current
 Environment=MMANAGER_DATA=/var/lib/mmanager
 Environment=MMANAGER_CONFIG=/etc/mmanager
 ExecStart=/opt/mmanager/current/venv/bin/uvicorn mmanager.api:app --host 127.0.0.1 --port 8765
+ExecStartPost=/opt/mmanager/current/venv/bin/python -m mmanager.networking
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

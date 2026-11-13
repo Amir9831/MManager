@@ -14,6 +14,7 @@ def setup(monkeypatch, tmp_path):
     monkeypatch.setattr(core, "_download", lambda url, dest, *args: Path(dest).write_bytes(b"x" * 2048))
     monkeypatch.setattr(core, "_active", lambda item: False)
     monkeypatch.setattr(core, "_systemctl", lambda action, item: None)
+    monkeypatch.setattr(core.networking, "apply", lambda item, write_runtime=True: None)
 
 
 def test_world_upload_and_activation(monkeypatch, tmp_path):

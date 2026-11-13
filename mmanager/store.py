@@ -10,7 +10,7 @@ def connect():
   db.execute("""CREATE TABLE IF NOT EXISTS servers(id TEXT PRIMARY KEY,name TEXT UNIQUE NOT NULL,edition TEXT NOT NULL,software TEXT NOT NULL DEFAULT 'vanilla',version TEXT NOT NULL,java_port INTEGER,bedrock_port INTEGER,directory TEXT NOT NULL,eula_accepted INTEGER NOT NULL DEFAULT 0,created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
   # Additive migrations keep the 0.1 registry and all world paths intact.
   cols={r[1] for r in db.execute("PRAGMA table_info(servers)")}
-  for name,definition in (("software","TEXT NOT NULL DEFAULT 'vanilla'"),("eula_accepted","INTEGER NOT NULL DEFAULT 0"),("bedrock_port","INTEGER")):
+  for name,definition in (("software","TEXT NOT NULL DEFAULT 'vanilla'"),("eula_accepted","INTEGER NOT NULL DEFAULT 0"),("bedrock_port","INTEGER"),("ipv4_enabled","INTEGER NOT NULL DEFAULT 1"),("ipv6_enabled","INTEGER NOT NULL DEFAULT 0"),("ipv6_port","INTEGER")):
    if name not in cols: db.execute(f"ALTER TABLE servers ADD COLUMN {name} {definition}")
   # TCP and UDP have independent port spaces. Bedrock keeps its UDP port in
   # java_port for API compatibility; cross-play stores its UDP port in bedrock_port.
@@ -22,6 +22,8 @@ def connect():
   except sqlite3.IntegrityError:
    # Preserve startup if legacy records already collide; allocation still checks both fields.
    db.execute("CREATE INDEX IF NOT EXISTS ix_servers_udp_port ON servers(CASE WHEN edition='bedrock' THEN java_port ELSE bedrock_port END)")
+  db.execute("UPDATE servers SET ipv6_port=CASE WHEN java_port BETWEEN 1024 AND 65534 THEN java_port+1 ELSE 19133 END WHERE edition='bedrock' AND ipv6_port IS NULL")
+  db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_servers_ipv6_port ON servers(ipv6_port) WHERE ipv6_port IS NOT NULL")
   db.execute("""CREATE TABLE IF NOT EXISTS backups(id TEXT PRIMARY KEY,server_id TEXT NOT NULL,filename TEXT NOT NULL,size INTEGER NOT NULL,created_at TEXT DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(server_id) REFERENCES servers(id) ON DELETE CASCADE)""")
   yield db
  finally:db.close()
@@ -43,7 +45,17 @@ def delete_backup(sid,bid):
   cur=db.execute("DELETE FROM backups WHERE server_id=? AND id=?",(sid,bid))
   return cur.rowcount==1
 
-def update_server_version(sid,version):
+def update_server_version(sid,version,java_port=None):
  with connect() as db:
-  cur=db.execute("UPDATE servers SET version=? WHERE id=?",(version,sid))
+  if java_port is None:
+   cur=db.execute("UPDATE servers SET version=? WHERE id=?",(version,sid))
+  else:
+   cur=db.execute("UPDATE servers SET version=?,java_port=? WHERE id=?",(version,int(java_port),sid))
+  if cur.rowcount!=1: raise ValueError("Server not found")
+
+ 
+def update_server_network(sid, ipv4_enabled, ipv6_enabled):
+ with connect() as db:
+  cur=db.execute("UPDATE servers SET ipv4_enabled=?,ipv6_enabled=? WHERE id=?",
+                 (int(bool(ipv4_enabled)),int(bool(ipv6_enabled)),sid))
   if cur.rowcount!=1: raise ValueError("Server not found")

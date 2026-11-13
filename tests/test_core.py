@@ -11,13 +11,14 @@ def setup(monkeypatch,tmp_path):
  monkeypatch.setattr(core,"_paper",lambda v:{"url":"https://invalid.test/paper.jar","checksum":None,"algorithm":"sha256"})
  monkeypatch.setattr(core,"_download",lambda u,d,*a:Path(d).write_bytes(b"x"*2048))
  monkeypatch.setattr(core,"choose_port",lambda p,proto,reserved:p if p not in reserved else p+1)
+ monkeypatch.setattr(core.networking,"apply",lambda item,write_runtime=True:None)
 def test_create_and_eula(monkeypatch,tmp_path):
  setup(monkeypatch,tmp_path);x=core.create_server("survival","java","1.21.4","vanilla",True)
  assert store.get_server(x["id"])["java_port"]==25565
  props=(tmp_path/"servers"/"survival"/"server.properties").read_text()
  assert "server-port=25565" in props
  assert "query.port=25565" in props
- assert "server-ip=" in props
+ assert "server-ip=0.0.0.0" in props
  assert "enable-query=false" in props
  assert "enable-rcon=false" in props
  assert (tmp_path/"servers"/"survival"/"eula.txt").read_text()=="eula=true\n"
@@ -76,7 +77,7 @@ def test_bedrock_install_uses_verified_zip(monkeypatch,tmp_path):
     assert "LD_LIBRARY_PATH" in (root/"run.sh").read_text()
     properties=(root/"server.properties").read_text()
     assert "server-port=19132" in properties
-    assert "server-portv6=19132" in properties
+    assert "server-portv6="+str(item["ipv6_port"]) in properties
     assert "enable-lan-visibility=false" in properties
     assert "enable-lan-broadcast=false" in properties
     assert "transport=nethernet" in properties
@@ -238,7 +239,7 @@ def test_java_update_reapplies_allocated_listener_ports(monkeypatch, tmp_path):
     props = core.server_settings(item["id"])["settings"]
     assert props["server-port"] == str(item["java_port"])
     assert props["query.port"] == str(item["java_port"])
-    assert props["server-ip"] == ""
+    assert props["server-ip"] == "0.0.0.0"
     assert props["enable-query"] == "false"
     assert props["enable-rcon"] == "false"
     assert props["motd"] == "Keep me"
@@ -268,7 +269,7 @@ def test_bedrock_update_reapplies_allocated_udp_ports(monkeypatch, tmp_path):
     core.update_server(item["id"], "1.26.63")
     props = core.server_settings(item["id"])["settings"]
     assert props["server-port"] == str(item["java_port"])
-    assert props["server-portv6"] == str(item["java_port"])
+    assert props["server-portv6"] == str(item["ipv6_port"])
     assert props["enable-lan-visibility"] == "false"
     assert props["enable-lan-broadcast"] == "false"
     assert props["transport"] == "nethernet"
@@ -321,9 +322,10 @@ def test_tcp_and_udp_can_share_same_numeric_port(monkeypatch, tmp_path):
 
     monkeypatch.setattr(core, "_download", fake_download)
     java = core.create_server("java19132", "java", "1.21.4", "vanilla", True)
-    bedrock = core.create_server("bedrock19132", "bedrock", "1.26.50", "bedrock", True)
+    bedrock = core.create_server("bedrock19132", "bedrock", "1.26.33", "bedrock", True)
     assert java["java_port"] == bedrock["java_port"] == 19132
-    assert core._bedrock_port_protocol("1.26.50") == "udp"
+    assert core._bedrock_port_protocol("1.26.33") == "udp"
+    assert core._bedrock_port_protocol("1.26.50") == "tcp"
     assert store.get_server(java["id"])["edition"] == "java"
     assert store.get_server(bedrock["id"])["edition"] == "bedrock"
 
@@ -378,3 +380,54 @@ def test_start_repairs_existing_bedrock_nethernet_properties(monkeypatch, tmp_pa
     assert props["transport"] == "nethernet"
     assert props["server-udp-ports"] == "49152-49200"
     assert props["server-port"] == "19132"
+
+
+def test_bedrock_raknet_uses_distinct_v6_port_and_defaults_ipv6_off(monkeypatch, tmp_path):
+    import zipfile
+    setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(core, "_bedrock", lambda v: {
+        "url": "https://invalid.test/bds.zip", "checksum": None, "algorithm": "sha256"
+    })
+    def fake_download(url, dest, *args):
+        with zipfile.ZipFile(dest, "w") as archive:
+            archive.writestr("bedrock_server", b"fake executable")
+        return Path(dest).stat().st_size
+    monkeypatch.setattr(core, "_download", fake_download)
+    item = core.create_server("legacy-ip", "bedrock", "1.26.33", "bedrock", True)
+    props = core.server_settings(item["id"])["settings"]
+    assert item["ipv4_enabled"] == 1
+    assert item["ipv6_enabled"] == 0
+    assert props["server-port"] == str(item["java_port"])
+    assert props["server-portv6"] == str(item["ipv6_port"])
+    assert item["java_port"] != item["ipv6_port"]
+    assert "server-ip" not in props
+
+
+def test_network_settings_are_persisted_and_restart_active_server(monkeypatch, tmp_path):
+    setup(monkeypatch, tmp_path)
+    item = core.create_server("networkcfg", "java", "1.21.4", "vanilla", True)
+    monkeypatch.setattr(core, "_active", lambda server: True)
+    policies = []
+    restarts = []
+    monkeypatch.setattr(core.networking, "apply", lambda server: policies.append((server["ipv4_enabled"], server["ipv6_enabled"])))
+    monkeypatch.setattr(core, "_systemctl", lambda action, server: restarts.append((action, server["name"])))
+    result = core.update_server_network(item["id"], True, True)
+    saved = store.get_server(item["id"])
+    assert result["saved"] is True
+    assert saved["ipv4_enabled"] == 1 and saved["ipv6_enabled"] == 1
+    assert policies[-1] == (1, 1)
+    assert restarts == [("restart", "networkcfg")]
+    with pytest.raises(core.ManagerError, match="GM-260"):
+        core.update_server_network(item["id"], False, False)
+
+
+def test_modern_bedrock_binds_ipv4_only_when_ipv6_disabled(tmp_path):
+    path = tmp_path / "server.properties"
+    path.write_text("server-port=19132\nserver-portv6=19132\n")
+    core._configure_bedrock_properties(path, 19132, "1.26.50", True, False, 19133)
+    props = dict(line.split("=", 1) for line in path.read_text().splitlines() if "=" in line)
+    assert props["server-ip"] == "0.0.0.0"
+    assert props["server-portv6"] == "19133"
+    core._configure_bedrock_properties(path, 19132, "1.26.50", True, True, 19133)
+    props = dict(line.split("=", 1) for line in path.read_text().splitlines() if "=" in line)
+    assert props["server-ip"] == ""
