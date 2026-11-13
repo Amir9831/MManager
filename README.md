@@ -45,6 +45,10 @@ Admin credentials: `/root/mmanager-admin-credentials.txt` (mode 0600). On a fres
 Version 0.7.0 keeps the public panel on HTTP as requested; use a trusted HTTPS reverse proxy when exposing it beyond a trusted network. Back up important worlds before upgrades or plugin changes and review [SECURITY.md](SECURITY.md) and [docs/INSTALL.md](docs/INSTALL.md).
 
 
-## Bedrock networking (BDS 1.26.60+)
+## Per-server IPv4 / IPv6 controls
 
-MManager configures Bedrock Dedicated Server 1.26.60 and newer to use NetherNet: `server-port` is the TCP signaling port, while gameplay uses UDP ports from `server-udp-ports` (`49152-49200`). Permit **both TCP on the configured `server-port` and UDP on `49152-49200`** in UFW and the provider firewall. The panel displays both transports for modern Bedrock servers. The UDP 7551 socket is LAN discovery, not the gameplay listener. Older BDS releases continue to use the legacy RakNet UDP listener and need only the configured UDP game port.
+The panel exposes independent IPv4 and IPv6 switches for each server. IPv4 defaults to enabled and IPv6 defaults to disabled, including existing installations after the additive database migration. At least one family must remain enabled. MManager applies the selected policy to the server's systemd cgroup with `IPAddressDeny=`, so the policy filters both inbound and outbound traffic for that server only; it does not change host-wide IPv6 settings, UFW, or the provider firewall. Enabling IPv6 removes the per-service IPv6 deny policy.
+
+For legacy Bedrock/RakNet, BDS has separate IPv4 and IPv6 UDP listeners. MManager assigns different port numbers to avoid the dual-stack bind collision; when IPv6 is disabled, the IPv6 listener may still appear in `ss`, but systemd blocks IPv6 packets for that service. When enabled, open the displayed IPv6 UDP port in the host and provider firewalls.
+
+For modern Bedrock/NetherNet, `server-port` is the TCP signaling port and gameplay uses UDP ports from `server-udp-ports` (`49152-49200`). When IPv6 is disabled, MManager binds the signaling listener to IPv4 and filters IPv6 traffic for the entire server unit. Permit TCP on the configured `server-port` and UDP on the configured gameplay range in UFW and the provider firewall. The UDP 7551 socket is LAN discovery, not the gameplay listener. Java and Cross-play use the same per-server family policy.
