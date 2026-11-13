@@ -4,6 +4,7 @@ from collections import deque
 from pathlib import Path
 from . import store,settings
 from .ports import choose_port
+from . import networking
 NAME=re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{1,31}$")
 SERVER_LOG_DIR=Path(os.environ.get("MMANAGER_LOG_DIR","/var/log/mmanager/servers"))
 BEDROCK_NETHERNET_MIN_VERSION=(1,26,60)
@@ -112,7 +113,7 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
  if not re.fullmatch(r"[A-Za-z0-9._-]{1,40}",version):raise ManagerError("GM-105: Invalid Minecraft version")
  if accept_eula is not True:raise ManagerError("GM-106: Explicit EULA acceptance required")
  settings.SERVERS.mkdir(parents=True,exist_ok=True);d=settings.SERVERS/name;d.mkdir(mode=0o750,exist_ok=False)
- item={"id":str(uuid.uuid4()),"name":name,"edition":edition,"software":software,"version":version,"java_port":None,"bedrock_port":None,"directory":str(d),"eula_accepted":1}
+ item={"id":str(uuid.uuid4()),"name":name,"edition":edition,"software":software,"version":version,"java_port":None,"bedrock_port":None,"ipv6_port":None,"ipv4_enabled":1,"ipv6_enabled":0,"directory":str(d),"eula_accepted":1}
  try:
   with store.connect() as db:
    db.execute("BEGIN IMMEDIATE")
@@ -126,11 +127,12 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
    if edition=="bedrock":
     protocol=_bedrock_port_protocol(version)
     item["java_port"]=choose_port(19132,protocol,used_tcp if protocol=="tcp" else used_udp)
+    item["ipv6_port"]=choose_port(19133,"udp",used_udp | {item["java_port"]})
    else:
     item["java_port"]=choose_port(25565,"tcp",used_tcp)
    if edition=="crossplay":
     item["bedrock_port"]=choose_port(19132,"udp",used_udp)
-   db.execute("INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,directory,eula_accepted) VALUES(:id,:name,:edition,:software,:version,:java_port,:bedrock_port,:directory,:eula_accepted)",item);db.commit()
+   db.execute("INSERT INTO servers(id,name,edition,software,version,java_port,bedrock_port,ipv6_port,ipv4_enabled,ipv6_enabled,directory,eula_accepted) VALUES(:id,:name,:edition,:software,:version,:java_port,:bedrock_port,:ipv6_port,:ipv4_enabled,:ipv6_enabled,:directory,:eula_accepted)",item);db.commit()
   artifact=_bedrock(version) if edition=="bedrock" else (_vanilla(version) if software=="vanilla" else _paper(version))
   archive=d/("bedrock.zip" if edition=="bedrock" else "server.jar")
   _download(artifact["url"],archive,artifact.get("checksum"),artifact.get("algorithm","sha256"))
@@ -145,13 +147,13 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
    binary.chmod(0o750)
    props=(Path(__file__).parent/"templates"/"bedrock-server.properties").read_text()
    (d/"server.properties").write_text(props)
-   _configure_bedrock_properties(d/"server.properties",item["java_port"],version)
+   _configure_bedrock_properties(d/"server.properties",item["java_port"],version,item.get("ipv4_enabled",1),item.get("ipv6_enabled",0),item.get("ipv6_port"))
    (d/"run.sh").write_text("#!/bin/sh\ncd /var/lib/mmanager/servers/"+name+"\nLD_LIBRARY_PATH=. exec ./bedrock_server\n")
   else:
    (d/"eula.txt").write_text("eula=true\n")
    props=(Path(__file__).parent/"templates"/"java-server.properties").read_text()
    (d/"server.properties").write_text(props)
-   _configure_java_properties(d/"server.properties",item["java_port"])
+   _configure_java_properties(d/"server.properties",item["java_port"],item.get("ipv4_enabled",1),item.get("ipv6_enabled",0))
    (d/"run.sh").write_text("#!/bin/sh\ncd /var/lib/mmanager/servers/"+name+"\nexec /usr/bin/java -Xms256M -Xmx1G -jar server.jar nogui\n")
   (d/"run.sh").chmod(0o750)
   if edition=="crossplay":
@@ -161,13 +163,16 @@ def create_server(name,edition="java",version="1.21.4",software="vanilla",accept
    geyser=plugins/"Geyser-Spigot";geyser.mkdir(exist_ok=True)
    geyser_config=geyser/"config.yml"
    shutil.copy2(Path(__file__).parent/"templates"/"crossplay-geyser.yml", geyser_config)
-   _configure_geyser(geyser_config, item["bedrock_port"], item["java_port"])
+   _configure_geyser(geyser_config, item["bedrock_port"], item["java_port"],item.get("ipv4_enabled",1),item.get("ipv6_enabled",0))
   return item
  except Exception:
   with store.connect() as db:db.execute("DELETE FROM servers WHERE id=?",(item["id"],))
   shutil.rmtree(d,ignore_errors=True);raise
 def _systemctl(action,item):
  if action not in {"start","stop","restart"}:raise ManagerError("GM-109: Invalid action")
+ if action in {"start","restart"}:
+  try: networking.apply(item)
+  except (OSError,RuntimeError,subprocess.TimeoutExpired) as exc: raise ManagerError("GM-260: "+str(exc)[:300])
  cmd=["/usr/bin/systemctl",action,f"mmanager-mc@{item['name']}.service"]
  p=subprocess.run(cmd,capture_output=True,text=True,timeout=30)
  if p.returncode:raise ManagerError("GM-220: "+(p.stderr.strip() or p.stdout.strip())[:300])
@@ -187,7 +192,7 @@ def server_action(sid,action):
  if not item:raise ManagerError("GM-108: Server not found")
  # Repair existing Bedrock properties after MManager upgrades before the next launch.
  if action in {"start","restart"} and item["edition"]=="bedrock":
-  _configure_bedrock_properties(Path(item["directory"])/"server.properties",item["java_port"],item["version"])
+  _configure_bedrock_properties(Path(item["directory"])/"server.properties",item["java_port"],item["version"],item.get("ipv4_enabled",1),item.get("ipv6_enabled",0),item.get("ipv6_port"))
  _systemctl(action,item);return {"ok":True,"action":action}
 def server_logs(sid,lines=100):
  item=store.get_server(sid)
@@ -460,10 +465,10 @@ def _write_server_runtime(root, edition, software, version, java_port, bedrock_p
         _configure_geyser(config_path, bedrock_port, java_port)
 
 
-def _configure_java_properties(path, port):
+def _configure_java_properties(path, port, ipv4_enabled=True, ipv6_enabled=True):
     """Keep Java/Paper listener and optional query listener aligned with the allocated TCP port."""
     for key, value in (
-        ("server-ip", ""),
+        ("server-ip", _network_bind_address(ipv4_enabled, ipv6_enabled)),
         ("server-port", str(port)),
         ("query.port", str(port)),
         ("enable-query", "false"),
@@ -472,7 +477,7 @@ def _configure_java_properties(path, port):
         _set_property_file(path, key, value)
 
 
-def _configure_geyser(path, bedrock_port, java_port):
+def _configure_geyser(path, bedrock_port, java_port, ipv4_enabled=True, ipv6_enabled=True):
     """Configure Geyser's Bedrock listener and its local Paper/Floodgate backend."""
     path = Path(path)
     try:
@@ -485,25 +490,37 @@ def _configure_geyser(path, bedrock_port, java_port):
     remote = config.setdefault("remote", {})
     if not isinstance(bedrock, dict) or not isinstance(remote, dict):
         raise ManagerError("GM-238: Geyser bedrock/remote configuration sections are invalid")
-    bedrock.update({"address": "0.0.0.0", "port": int(bedrock_port), "clone-remote-port": False, "transport": "nethernet"})
+    bedrock.update({"address": _network_bind_address(ipv4_enabled, ipv6_enabled, dual_stack="::"), "port": int(bedrock_port), "clone-remote-port": False, "transport": "nethernet"})
     remote.update({"address": "127.0.0.1", "port": int(java_port), "auth-type": "floodgate"})
     path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True))
 
 
-def _configure_bedrock_properties(path, port, version):
-    """Configure classic RakNet or modern NetherNet listener ports for this BDS release."""
+def _network_bind_address(ipv4_enabled, ipv6_enabled, dual_stack=""):
+    if not ipv4_enabled and not ipv6_enabled:
+        raise ManagerError("GM-260: At least one IP family must remain enabled")
+    if ipv4_enabled and ipv6_enabled:
+        return dual_stack
+    return "0.0.0.0" if ipv4_enabled else "::"
+
+
+def _configure_bedrock_properties(path, port, version, ipv4_enabled=True, ipv6_enabled=False, ipv6_port=None):
+    """Configure RakNet's separate UDP ports or NetherNet's address/transport settings."""
+    if not ipv4_enabled and not ipv6_enabled:
+        raise ManagerError("GM-260: At least one IP family must remain enabled")
     for key, value in (
         ("server-port", port),
-        ("server-portv6", port),
+        ("server-portv6", ipv6_port or 19133),
         ("enable-lan-visibility", "false"),
         ("enable-lan-broadcast", "false"),
     ):
         _set_property_file(path, key, str(value))
     if _bedrock_uses_nethernet(version):
         _set_property_file(path, "transport", "nethernet")
+        _set_property_file(path, "server-ip", _network_bind_address(bool(ipv4_enabled), bool(ipv6_enabled)))
         _set_property_file(path, "server-udp-ports", BEDROCK_UDP_PORT_RANGE)
     else:
         _remove_property_file(path, "transport")
+        _remove_property_file(path, "server-ip")
         _remove_property_file(path, "server-udp-ports")
 
 
