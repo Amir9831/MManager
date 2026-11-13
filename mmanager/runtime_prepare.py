@@ -2,7 +2,7 @@
 import sys
 from pathlib import Path
 
-from . import core, store
+from . import core, networking, store
 
 
 def prepare(name):
@@ -12,6 +12,7 @@ def prepare(name):
     root = Path(item["directory"])
     ipv4 = bool(item.get("ipv4_enabled", 1))
     ipv6 = bool(item.get("ipv6_enabled", 0))
+    networking.apply(item)
     if item["edition"] == "bedrock":
         core._configure_bedrock_properties(
             root / "server.properties", item["java_port"], item["version"],
