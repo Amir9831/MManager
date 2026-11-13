@@ -15,6 +15,10 @@ def prepare(name):
     if item.get("name") != name:
         raise RuntimeError("MManager network runtime config does not match this service instance")
     root = Path(item["directory"])
+    if root.resolve() != Path.cwd().resolve():
+        raise RuntimeError("MManager runtime config points to a different server directory")
+    if item.get("edition") not in {"java", "bedrock", "crossplay"}:
+        raise RuntimeError("Invalid server edition in MManager runtime config")
     ipv4 = bool(item.get("ipv4_enabled", 1))
     ipv6 = bool(item.get("ipv6_enabled", 0))
     networking.apply(item, write_runtime=False)
