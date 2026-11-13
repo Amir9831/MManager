@@ -16,6 +16,9 @@ class SetupServer(BaseModel):
  version:str=Field(min_length=1,max_length=40)
  accept_eula:bool=False
 class SettingsUpdate(BaseModel): settings:dict[str,str]
+class NetworkUpdate(BaseModel):
+ ipv4_enabled:bool
+ ipv6_enabled:bool
 class RCONConfig(BaseModel):
  enabled:bool
  password:str|None=None
@@ -109,6 +112,20 @@ def put_settings(p:SettingsUpdate,_:bool=Depends(secured)):
  try:
   result=core.update_server_settings(item["id"],p.settings); result["settings"].pop("rcon.password",None); return result
  except core.ManagerError as e:raise HTTPException(400,detail=str(e))
+@app.get("/api/server/network")
+def get_network_settings(_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ return {"ipv4_enabled":bool(item.get("ipv4_enabled",1)),
+         "ipv6_enabled":bool(item.get("ipv6_enabled",0)),
+         "ipv6_port":item.get("ipv6_port"),"edition":item["edition"],"version":item["version"]}
+@app.put("/api/server/network")
+def put_network_settings(p:NetworkUpdate,_:bool=Depends(secured)):
+ item=current_server()
+ if not item:raise HTTPException(404,detail="No server is configured")
+ try:return core.update_server_network(item["id"],p.ipv4_enabled,p.ipv6_enabled)
+ except (core.ManagerError,OSError,ValueError) as e:raise HTTPException(400,detail=str(e))
+
 @app.post("/api/server/backups")
 def backup(_:bool=Depends(secured)):
  item=current_server()
