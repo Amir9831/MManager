@@ -109,10 +109,9 @@ def update_server_network(sid, ipv4_enabled, ipv6_enabled):
             _configure_bedrock_properties(root / "server.properties", updated["java_port"], updated["version"],
                                           ipv4_enabled, ipv6_enabled, updated.get("ipv6_port"))
         else:
-            _configure_java_properties(root / "server.properties", updated["java_port"], ipv4_enabled, ipv6_enabled)
+            _configure_java_bind_address(root / "server.properties", ipv4_enabled, ipv6_enabled)
             if updated["edition"] == "crossplay":
-                _configure_geyser(root / "plugins" / "Geyser-Spigot" / "config.yml",
-                                  updated["bedrock_port"], updated["java_port"], ipv4_enabled, ipv6_enabled)
+                _configure_geyser_bind_address(root / "plugins" / "Geyser-Spigot" / "config.yml", ipv4_enabled, ipv6_enabled)
         networking.apply(updated)
         if was_active:
             _systemctl("restart", updated)
@@ -124,10 +123,9 @@ def update_server_network(sid, ipv4_enabled, ipv6_enabled):
                 _configure_bedrock_properties(root / "server.properties", previous["java_port"], previous["version"],
                                               old4, old6, previous.get("ipv6_port"))
             else:
-                _configure_java_properties(root / "server.properties", previous["java_port"], old4, old6)
+                _configure_java_bind_address(root / "server.properties", old4, old6)
                 if previous["edition"] == "crossplay":
-                    _configure_geyser(root / "plugins" / "Geyser-Spigot" / "config.yml",
-                                      previous["bedrock_port"], previous["java_port"], old4, old6)
+                    _configure_geyser_bind_address(root / "plugins" / "Geyser-Spigot" / "config.yml", old4, old6)
             networking.apply(previous)
         except Exception:
             pass
@@ -249,9 +247,9 @@ def server_action(sid,action):
   if item["edition"]=="bedrock":
    _configure_bedrock_properties(root/"server.properties",item["java_port"],item["version"],item.get("ipv4_enabled",1),item.get("ipv6_enabled",0),item.get("ipv6_port"))
   else:
-   _configure_java_properties(root/"server.properties",item["java_port"],item.get("ipv4_enabled",1),item.get("ipv6_enabled",0))
+   _configure_java_bind_address(root/"server.properties",item.get("ipv4_enabled",1),item.get("ipv6_enabled",0))
    if item["edition"]=="crossplay":
-    _configure_geyser(root/"plugins"/"Geyser-Spigot"/"config.yml",item["bedrock_port"],item["java_port"],item.get("ipv4_enabled",1),item.get("ipv6_enabled",0))
+    _configure_geyser_bind_address(root/"plugins"/"Geyser-Spigot"/"config.yml",item.get("ipv4_enabled",1),item.get("ipv6_enabled",0))
  _systemctl(action,item);return {"ok":True,"action":action}
 def server_logs(sid,lines=100):
  item=store.get_server(sid)
@@ -522,6 +520,25 @@ def _write_server_runtime(root, edition, software, version, java_port, bedrock_p
         config = config_path.read_text() if config_path.exists() else (Path(__file__).parent / "templates" / "crossplay-geyser.yml").read_text()
         config_path.write_text(config)
         _configure_geyser(config_path, bedrock_port, java_port,ipv4_enabled,ipv6_enabled)
+
+
+def _configure_java_bind_address(path, ipv4_enabled, ipv6_enabled):
+    _set_property_file(path, "server-ip", _network_bind_address(ipv4_enabled, ipv6_enabled))
+
+
+def _configure_geyser_bind_address(path, ipv4_enabled, ipv6_enabled):
+    path = Path(path)
+    try:
+        config = yaml.safe_load(path.read_text()) if path.exists() else {}
+    except (OSError, yaml.YAMLError) as exc:
+        raise ManagerError("GM-238: Cannot read Geyser configuration: " + str(exc)[:200])
+    if not isinstance(config, dict):
+        raise ManagerError("GM-238: Geyser configuration must be a YAML mapping")
+    bedrock = config.setdefault("bedrock", {})
+    if not isinstance(bedrock, dict):
+        raise ManagerError("GM-238: Geyser bedrock configuration section is invalid")
+    bedrock["address"] = _network_bind_address(ipv4_enabled, ipv6_enabled, dual_stack="::")
+    path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True))
 
 
 def _configure_java_properties(path, port, ipv4_enabled=True, ipv6_enabled=True):
